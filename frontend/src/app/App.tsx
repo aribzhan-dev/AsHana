@@ -1,5 +1,11 @@
 import { lazy, Suspense } from "react";
 import { WelcomePage } from "../pages/WelcomePage";
+const ReportsPage = lazy(() =>
+  import("../pages/ReportsPage").then((m) => ({ default: m.ReportsPage })),
+);
+const PosPage = lazy(() =>
+  import("../pages/PosPage").then((m) => ({ default: m.PosPage })),
+);
 const OrdersPage = lazy(() =>
   import("../pages/OrdersPage").then((m) => ({ default: m.OrdersPage })),
 );
@@ -27,7 +33,11 @@ import { LoadingState } from "../shared/ui/Feedback";
 export function App() {
   return (
     <Suspense fallback={<LoadingState />}>
-      {window.location.pathname === "/orders" ? (
+      {window.location.pathname === "/staff/reports" ? (
+        <ReportsPage />
+      ) : ["/staff/pos", "/staff/sales"].includes(window.location.pathname) ? (
+        <PosPage />
+      ) : window.location.pathname === "/orders" ? (
         <OrdersPage />
       ) : window.location.pathname === "/staff/orders" ? (
         <StaffOrdersPage />
@@ -35,9 +45,16 @@ export function App() {
         <CatalogPage />
       ) : window.location.pathname === "/staff/production" ? (
         <ProductionPage />
-      ) : window.location.pathname === "/staff/inventory" ? (
+      ) : [
+          "/staff/inventory",
+          "/staff/products",
+          "/staff/receipts",
+          "/staff/settings",
+        ].includes(window.location.pathname) ? (
         <InventoryPage />
-      ) : window.location.pathname === "/staff" ? (
+      ) : ["/staff", "/staff/profile", "/staff/team"].includes(
+          window.location.pathname,
+        ) ? (
         <StaffPage />
       ) : (
         <WelcomePage />

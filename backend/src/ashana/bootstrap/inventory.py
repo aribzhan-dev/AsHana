@@ -8,10 +8,13 @@ from ashana.modules.inventory.application.service import InventoryService
 from ashana.modules.inventory.infrastructure.database import PostgresInventoryUnitOfWork
 
 
-def inventory_service(engine: Engine, identity: IdentityService) -> InventoryService:
+def inventory_service(
+    engine: Engine, identity: IdentityService, *, cashier: bool = False
+) -> InventoryService:
     def authorize(connection: Connection, token: str) -> UUID:
         principal = identity.principal(PostgresIdentityRepository(connection), token)
-        principal.require("inventory.manage")
+        if not cashier or "inventory.manage" not in principal.user.effective_permissions:
+            principal.require("inventory.writeoff" if cashier else "inventory.manage")
         return principal.user.id
 
-    return InventoryService(lambda: PostgresInventoryUnitOfWork(engine, authorize))
+    return InventoryService(lambda: PostgresInventoryUnitOfWork(engine, authorize), cashier=cashier)

@@ -29,7 +29,7 @@ it("количество и деньги не принимают экспоне�
     expect(costMinor(value)).toBeUndefined();
   expect(decimalText(" 1,20 ")).toBe("1.20");
 });
-it("Алматы сохраняется как UTC независимо от зоны браузера", () => {
+it("Астана сохраняется как UTC независимо от зоны браузера", () => {
   expect(almatyInstant("2026-10-21T12:30")).toBe("2026-10-21T07:30:00.000Z");
   expect(almatyInstant("2026-02-30T12:30")).toBeUndefined();
   expect(almatyInstant("не дата")).toBeUndefined();

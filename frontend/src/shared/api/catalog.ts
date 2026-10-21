@@ -45,7 +45,14 @@ function period(value: unknown): Period {
 }
 function product(value: unknown): Record<string, unknown> {
   if (!record(value)) return invalid();
-  texts(value, ["id", "period_id", "name", "description", "portion_label"]);
+  texts(value, [
+    "id",
+    "period_id",
+    "name",
+    "description",
+    "portion_label",
+    "category",
+  ]);
   if (value.unit !== "pcs" && value.unit !== "portion") invalid();
   integer(value.price_minor, 0, 999999999999);
   return value;
@@ -59,7 +66,7 @@ function entry(value: unknown): MenuEntry {
   instant(v.updated_at);
   return v as MenuEntry;
 }
-function publicEntry(value: unknown): PublicEntry {
+export function publicEntry(value: unknown): PublicEntry {
   const v = product(value);
   texts(v, ["period_name"]);
   instant(v.starts_at);

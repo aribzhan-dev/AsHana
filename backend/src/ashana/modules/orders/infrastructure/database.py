@@ -238,8 +238,14 @@ class PostgresOrderRepository:
         row = self.connection.execute(query.with_for_update() if lock else query).mappings().first()
         return self._order(row) if row else None
 
-    def orders(self, guest: UUID | None, offset: int, limit: int) -> list[Order]:
+    def orders(
+        self, guest: UUID | None, offset: int, limit: int, state: str = "all"
+    ) -> list[Order]:
         query = select(drafts).join(orders, orders.c.id == drafts.c.id)
+        if state == "active":
+            query = query.where(drafts.c.status.in_(("confirmed", "preparing", "ready")))
+        elif state == "closed":
+            query = query.where(drafts.c.status.in_(("completed", "cancelled", "no_show")))
         if guest is not None:
             query = query.where(drafts.c.guest_id == guest)
             query = query.order_by(drafts.c.created_at.desc(), drafts.c.id)
@@ -371,7 +377,7 @@ class PostgresOrderRepository:
         message = (
             f"AsHana · {labels.get(kind, kind)}\nЗаказ {order.id}\n{lines}\n"
             f"Сумма: {order.total_minor // 100},{order.total_minor % 100:02d} ₸\n"
-            f"Выдача: {local_time} (Алматы)\nСобытие: {event_id}\n"
+            f"Выдача: {local_time} (Астана)\nСобытие: {event_id}\n"
             "ДЕМО: реальные деньги не списывались. Не является реальной оплатой еды."
         )
         if kind in ("confirmed", "paid_cancelled", "preparing", "ready", "completed"):

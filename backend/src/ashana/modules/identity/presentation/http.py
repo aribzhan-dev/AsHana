@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from ashana.bootstrap.errors import ErrorResponse
 from ashana.bootstrap.settings import Settings
 from ashana.modules.identity.application.service import IdentityService
-from ashana.modules.identity.domain.models import IdentityError, Role, User, permissions_for
+from ashana.modules.identity.domain.models import IdentityError, User
 
 router = APIRouter(
     prefix="/api/v1",
@@ -77,24 +77,19 @@ class LoginInput(InputModel):
 class StaffInput(LoginInput):
     phone: str | None = Field(default=None, max_length=32)
     name: str = Field(min_length=1, max_length=100)
-    roles: list[str] = Field(min_length=1, max_length=5)
+    roles: list[str] = Field(min_length=1, max_length=100)
 
 
 class RolesInput(InputModel):
-    roles: list[str] = Field(min_length=1, max_length=5)
+    roles: list[str] = Field(min_length=1, max_length=100)
 
 
 class SearchInput(InputModel):
     login: str = Field(min_length=1, max_length=64)
 
 
-def parse_roles(values: list[str]) -> frozenset[Role]:
-    try:
-        return frozenset(Role(value) for value in values)
-    except ValueError:
-        raise IdentityError(
-            "VALIDATION_ERROR", "Выберите допустимые роли", {"roles": ["Выберите допустимые роли"]}
-        ) from None
+def parse_roles(values: list[str]) -> frozenset[str]:
+    return frozenset(values)
 
 
 class UserResponse(BaseModel):
@@ -102,7 +97,7 @@ class UserResponse(BaseModel):
     login: str
     phone: str | None
     name: str
-    roles: list[Role]
+    roles: list[str]
     permissions: list[str]
     is_demo: bool
 
@@ -114,7 +109,7 @@ class UserResponse(BaseModel):
             phone=user.phone,
             name=user.name,
             roles=sorted(user.roles),
-            permissions=sorted(permissions_for(user.roles)),
+            permissions=sorted(user.effective_permissions),
             is_demo=user.is_demo,
         )
 
@@ -251,3 +246,42 @@ def assign_roles(
     return UserResponse.from_user(
         service.assign_roles(session_token(request), user_id, parse_roles(data.roles))
     )
+
+
+class RoleInput(InputModel):
+    code: str = Field(min_length=3, max_length=20)
+    name: str = Field(min_length=1, max_length=100)
+    permissions: list[str] = Field(max_length=20)
+    version: int | None = Field(default=None, ge=1)
+
+
+class RoleResponse(BaseModel):
+    code: str
+    name: str
+    permissions: list[str]
+    version: int
+
+
+@router.get("/admin/roles", operation_id="listRoles")
+def list_roles(request: Request, service: Service) -> list[RoleResponse]:
+    return [
+        RoleResponse(code=r.code, name=r.name, permissions=sorted(r.permissions), version=r.version)
+        for r in service.list_roles(session_token(request))
+    ]
+
+
+@router.put("/admin/roles", operation_id="saveRole", dependencies=[Depends(enforce_csrf)])
+def save_role(data: RoleInput, request: Request, service: Service) -> RoleResponse:
+    r = service.save_role(
+        session_token(request), data.code, data.name, frozenset(data.permissions), data.version
+    )
+    return RoleResponse(
+        code=r.code, name=r.name, permissions=sorted(r.permissions), version=r.version
+    )
+
+
+@router.get("/admin/users", operation_id="listStaff")
+def list_staff(request: Request, service: Service, offset: int = 0) -> list[UserResponse]:
+    return [
+        UserResponse.from_user(user) for user in service.list_staff(session_token(request), offset)
+    ]

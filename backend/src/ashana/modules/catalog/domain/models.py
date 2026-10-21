@@ -58,6 +58,7 @@ class Entry:
     updated_at: datetime
     name: str = ""
     unit: str = "portion"
+    category: str = ""
 
 
 @dataclass(frozen=True)
@@ -73,3 +74,4 @@ class MenuEntry:
     portion_label: str
     price_minor: int
     available: int
+    category: str = ""

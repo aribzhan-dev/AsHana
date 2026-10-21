@@ -108,17 +108,47 @@ export function Input({
 export function PasswordInput(props: Omit<InputProps, "type">) {
   return <Input {...props} type="password" leadingIcon="lock" />;
 }
-export function PhoneInput(props: Omit<InputProps, "type">) {
+export function PhoneInput({
+  value,
+  onChange,
+  ...props
+}: Omit<InputProps, "type">) {
+  const [invalid, setInvalid] = useState(false);
+  const digits = String(value || "").replace(/^\+7/, "");
   return (
-    <Input
-      placeholder={t.phonePlaceholder}
-      autoComplete="tel"
-      maxLength={32}
-      {...props}
-      type="tel"
-      inputMode="tel"
-      leadingIcon="phone"
-    />
+    <div className="phone-field">
+      <span className="phone-prefix" aria-hidden="true">
+        +7
+      </span>
+      <Input
+        {...props}
+        value={digits}
+        placeholder="700 000 00 00"
+        autoComplete="tel-national"
+        type="tel"
+        inputMode="numeric"
+        maxLength={32}
+        error={invalid ? "Введите только 10 цифр после +7" : props.error}
+        onChange={(event) => {
+          let next = event.target.value;
+          if (!/^[+0-9 ()-]*$/.test(next)) {
+            setInvalid(true);
+            return;
+          }
+          next = next.replace(/[ ()-]/g, "");
+          if (next.startsWith("+7")) next = next.slice(2);
+          else if (next.length === 11 && next.startsWith("7"))
+            next = next.slice(1);
+          if (!/^\d{0,10}$/.test(next)) {
+            setInvalid(true);
+            return;
+          }
+          setInvalid(false);
+          event.target.value = next ? `+7${next}` : "";
+          onChange?.(event);
+        }}
+      />
+    </div>
   );
 }
 export function Select({

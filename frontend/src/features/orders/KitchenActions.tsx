@@ -72,14 +72,14 @@ export function KitchenActions({
             ? "Начать комплектацию"
             : target === "ready"
               ? "Готов к выдаче"
-              : "Выдать заказ (ДЕМО)"}
+              : "Выдать заказ"}
         </Button>
       )}
       {op.error && !confirm && <Alert>{op.error}</Alert>}
       {confirm && (
         <Dialog
           open={confirm}
-          title="Подтвердить тестовую выдачу"
+          title="Подтвердить выдачу"
           busy={op.busy}
           onClose={() => setConfirm(false)}
         >
@@ -94,7 +94,7 @@ export function KitchenActions({
             <p>
               Сверьте состав заказа {order.id.slice(0, 8)} и код на экране
               посетителя. После подтверждения готовые порции будут списаны один
-              раз. Реальная оплата не подтверждена: это ДЕМО.
+              раз.
             </p>
             <Input
               label="Код получения"
@@ -109,7 +109,7 @@ export function KitchenActions({
             />
             {op.error && <Alert>{op.error}</Alert>}
             <Button type="submit" loading={op.busy}>
-              Подтвердить выдачу (ДЕМО)
+              Подтвердить выдачу
             </Button>
           </form>
         </Dialog>

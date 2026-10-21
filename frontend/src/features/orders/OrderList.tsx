@@ -14,7 +14,7 @@ import {
 } from "../../shared/ui/Feedback";
 import { KitchenActions } from "./KitchenActions";
 const statuses: Record<Order["status"], string> = {
-  pending_payment: "Ожидает тестовой оплаты",
+  pending_payment: "Ожидает оплаты",
   confirmed: "Принят",
   preparing: "Комплектуется",
   ready: "Готов к выдаче",
@@ -49,16 +49,17 @@ export function OrderCard({
     Math.ceil((Date.parse(order.expires_at) - now) / 1000),
   );
   async function pay(outcome: "success" | "failed" | "timeout") {
-    const ok = await op.run({ id: order.id, outcome }, (key) =>
-      ordersApi.pay(order.id, outcome, key),
-    );
+    let paymentStatus = order.status;
+    const ok = await op.run({ id: order.id, outcome }, async (key) => {
+      const result = await ordersApi.pay(order.id, outcome, key);
+      paymentStatus = result.status;
+      return result;
+    });
     if (ok) {
       setNotice(
-        outcome === "failed"
-          ? "Тестовая оплата отклонена. Можно повторить до истечения резерва."
-          : outcome === "timeout"
-            ? "Тестовый таймаут: успех не подтверждён. Обновите статус перед повтором."
-            : "",
+        paymentStatus === "pending_payment"
+          ? "Оплата не подтверждена. Можно повторить до истечения резерва."
+          : "",
       );
       onChanged();
     }
@@ -74,7 +75,6 @@ export function OrderCard({
         </h2>
         <Badge>{statuses[order.status]}</Badge>
       </div>
-      <Badge>ДЕМО · реальные деньги не списываются</Badge>
       {!staff &&
         order.pickup_code &&
         ["confirmed", "preparing", "ready"].includes(order.status) && (
@@ -128,21 +128,7 @@ export function OrderCard({
           {!staff && (
             <div className="button-row">
               <Button disabled={op.busy} onClick={() => void pay("success")}>
-                Тестовая оплата: успешно
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={op.busy}
-                onClick={() => void pay("failed")}
-              >
-                Тестовая оплата: отказ
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={op.busy}
-                onClick={() => void pay("timeout")}
-              >
-                Тестовая оплата: таймаут
+                Оплатить заказ
               </Button>
             </div>
           )}
@@ -191,7 +177,7 @@ export function OrderList({
       pending = true;
       try {
         const [orders, drafts] = await Promise.all([
-          ordersApi.list(staff, offset),
+          ordersApi.list(staff, offset, staff ? "active" : "all"),
           staff ? Promise.resolve([]) : ordersApi.checkouts(offset),
         ]);
         if (active) {
@@ -225,7 +211,7 @@ export function OrderList({
       </div>
       <p className="field-hint">
         {staff
-          ? "Здесь только заказы после подтверждения тестовой оплаты. Ближайшее время получения — в начале списка, завершённые и отменённые — в конце. Список обновляется каждые 15 секунд. Еда уже приготовлена: здесь порционируют, комплектуют и отмечают тестовую выдачу."
+          ? "Оплаченные заказы, ближайшие по времени — первыми. Обновление каждые 15 секунд."
           : "Оформления и заказы доступны в этом браузере. При удалении cookie доступ будет потерян; номер заказа сам по себе не даёт доступа."}
       </p>
       {loading ? (

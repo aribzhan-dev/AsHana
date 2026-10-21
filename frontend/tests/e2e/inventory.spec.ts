@@ -5,6 +5,8 @@ test.use({ trace: "off", screenshot: "off", video: "off" });
 test("склад: приход, списание, пересчёт, история и мобильные темы", async ({
   page,
 }, testInfo) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
   test.skip(!process.env.ASHANA_TEST_PASSWORD, "Нужен изолированный стенд");
   await page.goto("/staff/inventory");
   await page.getByLabel("Логин", { exact: true }).fill("stock.other");
@@ -26,38 +28,44 @@ test("склад: приход, списание, пересчёт, истори
   await expect(
     page.getByText("Позиция добавлена", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Приход", exact: true }).click();
-  const receipt = page.getByRole("form", { name: "Оформить приход" });
-  await receipt
-    .getByLabel("Позиция", { exact: true })
-    .selectOption({ label: "Рис для браузерной проверки · кг" });
-  await receipt.getByLabel("Обозначение партии").fill("Браузерная партия");
-  await receipt.getByLabel("Количество", { exact: true }).fill("1250,125");
-  await receipt.getByLabel("Единица", { exact: true }).selectOption("g");
-  await receipt
-    .getByLabel("Общая закупочная стоимость, ₸", { exact: true })
-    .fill("123,45");
-  await receipt
-    .getByLabel("Источник / поставщик", { exact: true })
-    .fill("Тестовая накладная");
+  await page.goto("/staff/receipts");
+  await page.getByRole("button", { name: "Новая накладная" }).click();
+  await page.getByLabel("Номер накладной").fill("Браузерная партия");
+  await page
+    .getByLabel("Поставщик", { exact: true })
+    .locator("../..")
+    .getByRole("button", { name: "Добавить" })
+    .click();
+  const createDialog = page.getByRole("dialog");
+  await createDialog
+    .getByLabel("Название", { exact: true })
+    .fill("Поставщик из браузера");
+  await createDialog
+    .getByRole("button", { name: "Создать", exact: true })
+    .click();
+  await expect(createDialog).not.toBeVisible();
+  await page
+    .getByLabel("Товар 1", { exact: true })
+    .selectOption({ label: "Рис для браузерной проверки" });
+  await page.getByLabel("Количество, кг").fill("1,25");
+  await page.getByLabel("Цена за единицу, ₸").fill("98,76");
   const expires = new Date(Date.now() + 3 * 24 * 3600000 + 5 * 3600000)
     .toISOString()
     .slice(0, 16);
-  await receipt.getByLabel("Годна до (Алматы)", { exact: true }).fill(expires);
-  await receipt.getByRole("button", { name: "Оформить приход" }).click();
+  await page.getByLabel("Годен до (Астана)").fill(expires);
+  await page.getByRole("button", { name: "Провести приход" }).click();
+  expect(pageErrors).toEqual([]);
   await expect(
-    page.getByText("Приход сохранён", { exact: true }),
+    page.getByRole("button", { name: "Новая накладная" }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Партии и остатки", exact: true })
-    .click();
+  await page.goto("/staff/inventory");
   const batch = page.locator(".stock-batch").filter({
     has: page.getByRole("heading", {
       name: "Рис для браузерной проверки",
       exact: true,
     }),
   });
-  await expect(batch).toContainText("1,250125");
+  await expect(batch).toContainText("1,25");
   await batch.getByRole("button", { name: "Списать", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Списание", exact: true });
   await dialog.getByLabel("Количество", { exact: true }).fill("0,25");
@@ -66,7 +74,7 @@ test("склад: приход, списание, пересчёт, истори
     .fill("Повреждена упаковка");
   await dialog.getByRole("button", { name: "Подтвердить изменение" }).click();
   await expect(dialog).not.toBeVisible();
-  await expect(batch).toContainText("1,000125");
+  await expect(batch).toContainText("1 кг");
   await batch.getByRole("button", { name: "Пересчитать", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "Инвентаризация", exact: true });
   await dialog
@@ -116,7 +124,7 @@ test("склад: приход, списание, пересчёт, истори
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ["light", "dark"]) {
       await selectTheme(page, theme);
-      for (const section of ["Партии и остатки", "Приход", "Позиции склада"]) {
+      for (const section of ["Партии и остатки", "Позиции склада"]) {
         await page.getByRole("button", { name: section, exact: true }).click();
         if (
           section === "Приход" &&

@@ -1,3 +1,7 @@
+import { BarcodeEditor } from "./BarcodeEditor";
+import { receivingApi, type Directory } from "../../shared/api/receiving";
+import { DetailsButton } from "../../shared/ui/DetailsButton";
+import { displayText } from "../../shared/lib/display-text";
 import { useCallback, useEffect, useState } from "react";
 import {
   inventoryApi,
@@ -13,6 +17,7 @@ import {
   stockNumber,
 } from "../../shared/lib/inventory-validation";
 import { inventoryRu as t } from "../../shared/locales/inventory";
+import { Input, Select } from "../../shared/ui/Input";
 import { Button } from "../../shared/ui/Button";
 import {
   Badge,
@@ -23,10 +28,18 @@ import {
   Toast,
 } from "../../shared/ui/Feedback";
 import { BatchDialog, HistoryDialog } from "./BatchDialog";
-import { ItemForm, ReceiptForm } from "./StockForms";
+import { ItemForm } from "./StockForms";
 
 export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
-  const [tab, setTab] = useState<"items" | "receipts" | "batches">("batches");
+  const [barcodeItem, setBarcodeItem] = useState<StockItem | null>(null);
+  const [warehouses, setWarehouses] = useState<Directory[]>([]);
+  const [warehouse, setWarehouse] = useState("");
+  const [batchQuery, setBatchQuery] = useState("");
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState("");
+  const [tab, setTab] = useState<"items" | "batches">(
+    window.location.pathname.endsWith("/products") ? "items" : "batches",
+  );
   const [items, setItems] = useState<StockItem[]>([]),
     [batches, setBatches] = useState<StockBatch[]>([]);
   const [page, setPage] = useState(0),
@@ -49,10 +62,15 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
   }, []);
   useEffect(() => {
     let active = true;
-    void Promise.all([inventoryApi.items(), inventoryApi.batches(page * 20)])
-      .then(([nextItems, nextBatches]) => {
+    void Promise.all([
+      inventoryApi.items(),
+      inventoryApi.batches(page * 20, warehouse, batchQuery),
+      receivingApi.directories("warehouse"),
+    ])
+      .then(([nextItems, nextBatches, ws]) => {
         if (active) {
           setItems(nextItems);
+          setWarehouses(ws);
           setMore(nextItems.length === 100);
           setBatches(nextBatches);
           setUpdated(new Date().toISOString());
@@ -69,7 +87,7 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
     return () => {
       active = false;
     };
-  }, [page, attempt, onExpired]);
+  }, [page, attempt, onExpired, warehouse, batchQuery]);
   async function loadMoreItems() {
     if (itemBusy) return;
     setItemBusy(true);
@@ -106,7 +124,7 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
         </Button>
       </div>
       <div className="stock-tabs" role="group" aria-label={t.title}>
-        {(["batches", "receipts", "items"] as const).map((code) => (
+        {(["batches", "items"] as const).map((code) => (
           <Button
             key={code}
             variant={tab === code ? "primary" : "secondary"}
@@ -125,18 +143,56 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
           <ItemForm onExpired={onExpired} onSaved={refresh} />
           <Card>
             <h2>{t.items}</h2>
+            <div className="form-stack">
+              <Input
+                label="Найти товар"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                leadingIcon="search"
+                placeholder="Название товара"
+              />
+              <Select
+                label="Тип товара"
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+              >
+                <option value="">Все типы</option>
+                {Object.entries(t.kinds).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
             {!items.length && !loading ? (
               <EmptyState title={t.noItems} />
             ) : (
               <ul className="stock-items">
-                {items.map((item) => (
-                  <li key={item.id}>
-                    <strong>{item.name}</strong>
-                    <span>
-                      {t.kinds[item.kind]} · {t.units[item.unit]}
-                    </span>
-                  </li>
-                ))}
+                {items
+                  .filter(
+                    (item) =>
+                      (!kind || item.kind === kind) &&
+                      item.name
+                        .toLocaleLowerCase("ru")
+                        .includes(query.toLocaleLowerCase("ru")),
+                  )
+                  .map((item) => (
+                    <li key={item.id}>
+                      <strong>{item.name}</strong>
+                      <span>
+                        {t.kinds[item.kind]} · {t.units[item.unit]}
+                        {item.barcode ? ` · ${item.barcode}` : ""}
+                      </span>
+                      {item.kind === "purchased" && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => setBarcodeItem(item)}
+                        >
+                          Штрихкод
+                        </Button>
+                      )}
+                    </li>
+                  ))}
               </ul>
             )}
             {more && (
@@ -151,22 +207,34 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
           </Card>
         </div>
       )}
-      {tab === "receipts" && (
-        <>
-          <ReceiptForm items={items} onExpired={onExpired} onSaved={refresh} />
-          {more && (
-            <Button
-              variant="secondary"
-              loading={itemBusy}
-              onClick={() => void loadMoreItems()}
-            >
-              {t.moreItems}
-            </Button>
-          )}
-        </>
-      )}
       {tab === "batches" && (
         <>
+          <div className="report-filters">
+            <Input
+              label="Поиск по остаткам"
+              leadingIcon="search"
+              value={batchQuery}
+              onChange={(e) => {
+                setBatchQuery(e.target.value);
+                setPage(0);
+              }}
+            />
+            <Select
+              label="Склад"
+              value={warehouse}
+              onChange={(e) => {
+                setWarehouse(e.target.value);
+                setPage(0);
+              }}
+            >
+              <option value="">Все склады</option>
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </Select>
+          </div>
           {updated && (
             <p className="field-hint">
               {t.updated}: {stockDate(updated)}. {t.refreshHint}
@@ -174,16 +242,20 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
           )}
           {!batches.length && !loading && !error ? (
             <EmptyState title={t.noBatches}>
-              <Button onClick={() => setTab("receipts")}>{t.receive}</Button>
+              <a href="/staff/receipts">Открыть приход</a>
             </EmptyState>
           ) : (
             <div className="stock-batches">
               {batches.map((batch) => (
-                <Card key={batch.id} className="stock-batch">
+                <Card key={batch.id} className="stock-batch compact-batch">
                   <div className="stock-batch-heading">
                     <div>
                       <h2>{batch.item_name}</h2>
-                      <p className="muted">{batch.label}</p>
+                      <p className="muted">
+                        {displayText(batch.label)} ·{" "}
+                        {warehouses.find((w) => w.id === batch.warehouse_id)
+                          ?.name || "Основной склад"}
+                      </p>
                     </div>
                     <Badge>
                       {t.states[batch.status as keyof typeof t.states]}
@@ -204,28 +276,30 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
                       ),
                     )}
                   </dl>
-                  <dl className="stock-details">
-                    <div>
-                      <dt>{t.expires}</dt>
-                      <dd>{stockDate(batch.expires_at)}</dd>
-                    </div>
-                    <div>
-                      <dt>{t.source}</dt>
-                      <dd>{batch.source}</dd>
-                    </div>
-                    <div>
-                      <dt>{t.cost}</dt>
-                      <dd>
-                        {batch.item_kind === "prepared"
-                          ? t.unknownCost
-                          : stockMoney(batch.total_cost_minor)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>{t.received}</dt>
-                      <dd>{stockDate(batch.received_at)}</dd>
-                    </div>
-                  </dl>
+                  <DetailsButton title={batch.item_name}>
+                    <dl className="stock-details">
+                      <div>
+                        <dt>{t.expires}</dt>
+                        <dd>{stockDate(batch.expires_at)}</dd>
+                      </div>
+                      <div>
+                        <dt>{t.source}</dt>
+                        <dd>{displayText(batch.source)}</dd>
+                      </div>
+                      <div>
+                        <dt>{t.cost}</dt>
+                        <dd>
+                          {batch.item_kind === "prepared"
+                            ? t.unknownCost
+                            : stockMoney(batch.total_cost_minor)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{t.received}</dt>
+                        <dd>{stockDate(batch.received_at)}</dd>
+                      </div>
+                    </dl>
+                  </DetailsButton>
                   <div className="stock-actions">
                     <Button
                       variant="secondary"
@@ -297,6 +371,17 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
             </Button>
           </div>
         </>
+      )}
+      {barcodeItem && (
+        <BarcodeEditor
+          item={barcodeItem}
+          onExpired={onExpired}
+          onClose={() => setBarcodeItem(null)}
+          onSaved={() => {
+            setBarcodeItem(null);
+            refresh();
+          }}
+        />
       )}
       {dialog && (
         <BatchDialog

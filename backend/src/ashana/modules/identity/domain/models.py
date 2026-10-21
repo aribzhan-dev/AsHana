@@ -24,9 +24,9 @@ class Role(StrEnum):
     ADMIN = "admin"
 
 
-ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
+ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     Role.KITCHEN: frozenset({"kitchen.read", "kitchen.manage", "production.manage"}),
-    Role.CASHIER: frozenset({"kitchen.read", "orders.fulfil", "pos.sell"}),
+    Role.CASHIER: frozenset({"kitchen.read", "orders.fulfil", "pos.sell", "inventory.writeoff"}),
     Role.STOREKEEPER: frozenset({"inventory.manage"}),
     Role.MANAGER: frozenset(
         {
@@ -36,6 +36,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
             "orders.fulfil",
             "pos.sell",
             "inventory.manage",
+            "inventory.writeoff",
             "catalog.manage",
             "reporting.read",
         }
@@ -107,10 +108,17 @@ class User:
     phone: str | None
     name: str
     password_hash: str = field(repr=False)
-    roles: frozenset[Role]
+    roles: frozenset[str]
     created_at: datetime
     is_active: bool = True
     is_demo: bool = True
+    permissions: frozenset[str] | None = None
+
+    @property
+    def effective_permissions(self) -> frozenset[str]:
+        if self.permissions is not None:
+            return self.permissions
+        return frozenset(p for role in self.roles for p in ROLE_PERMISSIONS.get(role, frozenset()))
 
 
 @dataclass(frozen=True)
@@ -132,5 +140,16 @@ class Principal:
     session: Session
 
     def require(self, permission: str) -> None:
-        if permission not in permissions_for(self.user.roles):
+        if permission not in self.user.effective_permissions:
             raise IdentityError("FORBIDDEN", "Недостаточно прав для этого действия")
+
+
+@dataclass(frozen=True)
+class RoleDefinition:
+    code: str
+    name: str
+    permissions: frozenset[str]
+    version: int
+
+
+PERMISSIONS = frozenset(p for values in ROLE_PERMISSIONS.values() for p in values)

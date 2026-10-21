@@ -33,6 +33,7 @@ class ItemInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     kind: Literal["raw", "purchased", "prepared"]
     unit: Literal["kg", "l", "pcs", "portion"]
+    barcode: str | None = Field(default=None, max_length=14)
 
 
 class ReceiptInput(BaseModel):
@@ -61,6 +62,7 @@ class ItemResponse(BaseModel):
     name: str
     kind: Literal["raw", "purchased", "prepared"]
     unit: Literal["kg", "l", "pcs", "portion"]
+    barcode: str | None = Field(default=None, max_length=14)
 
 
 class OperationResponse(BaseModel):
@@ -69,6 +71,7 @@ class OperationResponse(BaseModel):
 
 
 class BatchResponse(BaseModel):
+    warehouse_id: UUID
     item_kind: Literal["raw", "purchased", "prepared"]
     id: UUID
     item_id: UUID
@@ -133,17 +136,26 @@ def list_items(
 )
 def create_item(data: ItemInput, request: Request, service: Service, key: Key) -> OperationResponse:
     return OperationResponse(
-        **asdict(service.create_item(session_token(request), key, data.name, data.kind, data.unit))
+        **asdict(
+            service.create_item(
+                session_token(request), key, data.name, data.kind, data.unit, data.barcode
+            )
+        )
     )
 
 
 @router.get("/batches", operation_id="listStockBatches")
 def list_batches(
-    request: Request, service: Service, offset: Offset = 0, limit: Limit = 50
+    request: Request,
+    service: Service,
+    offset: Offset = 0,
+    limit: Limit = 50,
+    warehouse_id: UUID | None = None,
+    query: str = Query(default="", max_length=100),
 ) -> list[BatchResponse]:
     return [
         BatchResponse.from_batch(batch)
-        for batch in service.batches(session_token(request), offset, limit)
+        for batch in service.batches(session_token(request), offset, limit, warehouse_id, query)
     ]
 
 
@@ -204,3 +216,136 @@ def list_movements(
             values[field] = str(values[field])
         result.append(MovementResponse(**values))
     return result
+
+
+class DirectoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["supplier", "warehouse", "payment_method"]
+    name: str = Field(min_length=1, max_length=100, strict=True)
+
+
+class DirectoryResponse(DirectoryInput):
+    id: UUID
+
+
+class InvoiceLineInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    item_id: UUID
+    quantity: str = Field(min_length=1, max_length=24, strict=True)
+    unit: Literal["kg", "g", "l", "ml", "pcs"]
+    unit_cost_minor: int = Field(ge=0, le=999999999999, strict=True)
+    expires_at: datetime
+
+
+class InvoiceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    number: str = Field(min_length=1, max_length=100, strict=True)
+    supplier_id: UUID
+    warehouse_id: UUID
+    payment_method_id: UUID
+    received_at: datetime
+    expenses_minor: int = Field(ge=0, le=999999999999, strict=True)
+    note: str = Field(default="", max_length=200, strict=True)
+    lines: list[InvoiceLineInput] = Field(min_length=1, max_length=100)
+
+
+class InvoiceResponse(BaseModel):
+    id: UUID
+    number: str
+    supplier_id: UUID
+    warehouse_id: UUID
+    payment_method_id: UUID
+    received_at: datetime
+    goods_minor: int
+    expenses_minor: int
+    total_minor: int
+    note: str
+    actor_id: UUID
+    created_at: datetime
+    lines: list[dict[str, object]]
+    supplier_name: str
+    warehouse_name: str
+    payment_method_name: str
+
+
+@router.get("/directories", operation_id="listStockDirectories")
+def directories(
+    request: Request, service: Service, kind: Literal["supplier", "warehouse", "payment_method"]
+) -> list[DirectoryResponse]:
+    return [
+        DirectoryResponse(**asdict(d)) for d in service.directories(session_token(request), kind)
+    ]
+
+
+@router.post(
+    "/directories",
+    operation_id="createStockDirectory",
+    status_code=201,
+    dependencies=[Depends(enforce_csrf)],
+)
+def create_directory(
+    request: Request, data: DirectoryInput, service: Service, key: Key
+) -> OperationResponse:
+    return OperationResponse(
+        **asdict(service.create_directory(session_token(request), key, data.kind, data.name))
+    )
+
+
+@router.get("/invoices", operation_id="listStockInvoices")
+def invoices(
+    request: Request, service: Service, offset: Offset = 0, limit: Limit = 20
+) -> list[InvoiceResponse]:
+    return [
+        InvoiceResponse(**asdict(i))
+        for i in service.invoices(session_token(request), offset, limit)
+    ]
+
+
+@router.post(
+    "/invoices",
+    operation_id="receiveInvoice",
+    status_code=201,
+    dependencies=[Depends(enforce_csrf)],
+)
+def receive_invoice(
+    request: Request, data: InvoiceInput, service: Service, key: Key
+) -> OperationResponse:
+    from ashana.modules.inventory.domain.models import InvoiceLine
+
+    return OperationResponse(
+        **asdict(
+            service.receive_invoice(
+                session_token(request),
+                key,
+                data.number,
+                data.supplier_id,
+                data.warehouse_id,
+                data.payment_method_id,
+                data.received_at,
+                data.expenses_minor,
+                data.note,
+                [InvoiceLine(**line.model_dump()) for line in data.lines],
+            )
+        )
+    )
+
+
+class BarcodeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    barcode: str | None = Field(max_length=14)
+    expected_barcode: str | None = Field(max_length=14)
+
+
+@router.put(
+    "/items/{item_id}/barcode", operation_id="setItemBarcode", dependencies=[Depends(enforce_csrf)]
+)
+def set_barcode(
+    item_id: UUID, data: BarcodeInput, request: Request, service: Service, key: Key
+) -> OperationResponse:
+    return OperationResponse(
+        **asdict(
+            service.set_barcode(
+                session_token(request), key, item_id, data.barcode, data.expected_barcode
+            )
+        )
+    )

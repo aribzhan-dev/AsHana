@@ -38,7 +38,9 @@ test("кухня: версия рецепта, фактический выпус
       has: page.getByRole("heading", { name: "Каша для кухни", exact: true }),
     })
     .filter({ hasText: "Версия 2" });
-  await expect(updated).toContainText("1,500125");
+  await updated.getByRole("button", { name: /Подробнее/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("1,500125");
+  await page.keyboard.press("Escape");
   await updated.getByRole("button", { name: "Выпустить продукцию" }).click();
   dialog = page.getByRole("dialog", {
     name: "Выпустить продукцию",
@@ -55,7 +57,7 @@ test("кухня: версия рецепта, фактический выпус
   const expires = new Date(Date.now() + 24 * 3600000 + 5 * 3600000)
     .toISOString()
     .slice(0, 16);
-  await dialog.getByLabel("Годна до (Алматы)").fill(expires);
+  await dialog.getByLabel("Годна до (Астана)").fill(expires);
   await dialog.getByRole("checkbox").check();
   await page.setViewportSize({ width: 390, height: 900 });
   // Only synthetic stock data remains on the screen; auth recording is disabled.
@@ -68,19 +70,20 @@ test("кухня: версия рецепта, фактический выпус
   );
   await dialog.getByRole("button", { name: "Подтвердить выпуск" }).click();
   await expect(dialog).not.toBeVisible();
-  const produced = page.locator(".production-card").filter({
-    has: page.getByRole("heading", {
-      name: "Утренний выпуск из браузера",
-      exact: true,
-    }),
-  });
-  await expect(produced).toContainText("9 порций");
-  await expect(produced).toContainText("0,75 кг");
+  const produced = page
+    .locator(".production-card")
+    .filter({ hasText: "9 порций" })
+    .first();
   await expect(produced).toContainText("Версия 2");
-  await produced.getByRole("button", { name: "Рецепт выпуска" }).click();
-  dialog = page.getByRole("dialog");
+  await produced.getByRole("button", { name: /Подробнее/ }).click();
+  const outputDialog = page.getByRole("dialog");
+  await expect(outputDialog).toContainText("Утренний выпуск из браузера");
+  await expect(outputDialog).toContainText("0,75 кг");
+  await outputDialog.getByRole("button", { name: "Рецепт выпуска" }).click();
+  dialog = page.getByRole("dialog").last();
   await expect(dialog).toContainText("Обновлённая технологическая карта");
   await expect(dialog).toContainText("15 порций");
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   for (const width of [360, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });

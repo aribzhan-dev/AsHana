@@ -25,6 +25,7 @@ const entry: MenuEntry = {
   period_id: "period",
   item_id: "juice",
   name: "Сок",
+  category: "Горячее",
   description: "Яблочный",
   portion_label: "0,5 л",
   unit: "pcs",
@@ -36,7 +37,7 @@ const entry: MenuEntry = {
   updated_at: period.updated_at,
 };
 afterEach(() => vi.restoreAllMocks());
-it("период требует правильного интервала и передаёт время Алматы в UTC с версией", async () => {
+it("период требует правильного интервала и передаёт время Астана в UTC с версией", async () => {
   const save = vi
     .spyOn(catalogApi, "savePeriod")
     .mockResolvedValue({ subject_id: "period", version: 3 });
@@ -50,21 +51,21 @@ it("период требует правильного интервала и п�
       onBusy={vi.fn()}
     />,
   );
-  expect(screen.getByLabelText("Начало (Алматы)")).toHaveValue(
+  expect(screen.getByLabelText("Начало (Астана)")).toHaveValue(
     "2026-10-21T12:00",
   );
-  fireEvent.change(screen.getByLabelText("Окончание (Алматы)"), {
+  fireEvent.change(screen.getByLabelText("Окончание (Астана)"), {
     target: { value: "2026-10-21T11:00" },
   });
   await userEvent.click(
     screen.getByRole("button", { name: "Сохранить период" }),
   );
   expect(save).not.toHaveBeenCalled();
-  expect(screen.getByLabelText("Окончание (Алматы)")).toHaveAttribute(
+  expect(screen.getByLabelText("Окончание (Астана)")).toHaveAttribute(
     "aria-invalid",
     "true",
   );
-  fireEvent.change(screen.getByLabelText("Окончание (Алматы)"), {
+  fireEvent.change(screen.getByLabelText("Окончание (Астана)"), {
     target: { value: "2026-10-21T14:00" },
   });
   await userEvent.click(screen.getByLabelText("Опубликовать период"));

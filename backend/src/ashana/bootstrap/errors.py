@@ -64,7 +64,7 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(InventoryError)
     async def inventory_error(request: Request, exc: InventoryError) -> JSONResponse:
-        status = 422 if exc.code == "VALIDATION_ERROR" else 404 if exc.code == "NOT_FOUND" else 409
+        status = {"VALIDATION_ERROR": 422, "NOT_FOUND": 404, "FORBIDDEN": 403}.get(exc.code, 409)
         return error_response(request, status, exc.code, exc.message, exc.field_errors)
 
     @app.exception_handler(HTTPException)

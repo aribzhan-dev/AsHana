@@ -144,6 +144,7 @@ export function EntryForm({
     [loadError, setLoadError] = useState(""),
     [attempt, setAttempt] = useState(0);
   const [itemId, setItemId] = useState(previous?.item_id || ""),
+    [category, setCategory] = useState(previous?.category || ""),
     [description, setDescription] = useState(previous?.description || ""),
     [portion, setPortion] = useState(previous?.portion_label || ""),
     [price, setPrice] = useState(
@@ -206,6 +207,7 @@ export function EntryForm({
     const body = {
       item_id: itemId,
       description: description.trim(),
+      category: category.trim(),
       portion_label: portion.trim(),
       price_minor: minor,
       published,
@@ -287,6 +289,29 @@ export function EntryForm({
             )}
           </>
         )}
+        <Input
+          label="Категория"
+          list="menu-categories"
+          placeholder="Например, Горячее, Супы, Напитки"
+          value={category}
+          maxLength={60}
+          onChange={(e) => setCategory(e.target.value)}
+          error={op.fields.category}
+          hint="Выберите название из подсказки или введите новую категорию."
+        />
+        <datalist id="menu-categories">
+          {[
+            "Горячее",
+            "Супы",
+            "Салаты",
+            "Гарниры",
+            "Выпечка",
+            "Напитки",
+            "Молочные продукты",
+          ].map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
         <Input
           label={t.portion}
           hint={t.portionHint}

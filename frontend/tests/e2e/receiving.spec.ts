@@ -1,0 +1,96 @@
+import { expect, test } from "@playwright/test";
+import { selectTheme } from "./theme-helper";
+test.use({ trace: "off", screenshot: "off", video: "off" });
+test("накладная: товар внутри формы, штрихкод, расходы, склад и компактные детали", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120000);
+  test.skip(!process.env.ASHANA_TEST_PASSWORD, "Нужен изолированный стенд");
+  await page.goto("/staff/receipts");
+  await page.getByLabel("Логин", { exact: true }).fill("stock.other");
+  await page
+    .getByLabel("Пароль", { exact: true })
+    .fill(process.env.ASHANA_TEST_PASSWORD!);
+  await page.getByRole("button", { name: "Войти", exact: true }).click();
+  await page.getByRole("button", { name: "Новая накладная" }).click();
+  await page.getByLabel("Номер накладной").fill("UI-накладная-01");
+  for (const [field, name] of [
+    ["Поставщик", "Поставщик UI"],
+    ["Склад", "Склад UI"],
+    ["Способ оплаты", "Перевод UI"],
+  ]) {
+    await page
+      .getByLabel(field!, { exact: true })
+      .locator("../..")
+      .getByRole("button", { name: "Добавить", exact: true })
+      .click();
+    const d = page.getByRole("dialog");
+    await d.getByLabel("Название", { exact: true }).fill(name!);
+    await d.getByRole("button", { name: "Создать", exact: true }).click();
+    await expect(d).not.toBeVisible();
+  }
+  await page
+    .getByRole("button", { name: "Создать товар", exact: true })
+    .click();
+  let dialog = page.getByRole("dialog");
+  await dialog
+    .getByLabel("Название", { exact: true })
+    .fill("Напиток со штрихкодом UI");
+  await dialog.getByLabel("Тип позиции").selectOption("purchased");
+  await dialog.getByLabel("Штрихкод", { exact: true }).fill("4870000000018");
+  await dialog.getByRole("button", { name: "Добавить позицию" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByLabel("Товар 1", { exact: true })).not.toHaveValue("");
+  await page.getByLabel("Количество, шт").fill("3");
+  await page.getByLabel("Цена за единицу, ₸").fill("100,50");
+  await page
+    .getByLabel("Годен до (Астана)")
+    .fill(
+      new Date(Date.now() + 86400000 + 5 * 3600000).toISOString().slice(0, 16),
+    );
+  await page.getByLabel("Дополнительные расходы, ₸").fill("20");
+  await expect(page.locator(".invoice-totals")).toContainText("321,50");
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 950 });
+    for (const theme of ["light", "dark"]) {
+      await selectTheme(page, theme);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      if (width !== 768)
+        await page.screenshot({
+          path: testInfo.outputPath(`invoice-${width}-${theme}.png`),
+          fullPage: true,
+          animations: "disabled",
+        });
+    }
+  }
+  await page.getByRole("button", { name: "Провести приход" }).click();
+  await expect(
+    page.getByRole("button", { name: "Новая накладная" }),
+  ).toBeVisible();
+  const row = page
+    .locator(".compact-record")
+    .filter({ hasText: "UI-накладная-01" });
+  await expect(row).toContainText("321,50");
+  await row.getByRole("button", { name: /Подробнее/ }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Напиток со штрихкодом UI");
+  await expect(dialog).toContainText("Расходы: 20,00");
+  await page.keyboard.press("Escape");
+  await page.goto("/staff/inventory");
+  await page
+    .getByRole("combobox", { name: "Склад", exact: true })
+    .selectOption({ label: "Склад UI" });
+  await expect(page.locator(".stock-batch")).toHaveCount(1);
+  await expect(page.locator(".stock-batch")).toContainText(
+    "Напиток со штрихкодом UI",
+  );
+  await page.goto("/staff/settings");
+  await expect(
+    page.getByRole("heading", { name: "Настройки", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".stock-items")).toContainText("Перевод UI");
+});

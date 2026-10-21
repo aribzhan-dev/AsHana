@@ -406,11 +406,13 @@ class OrderService:
         with self.uow() as uow:
             return self._issues(uow, uow.repository.orders(self._guest(uow, token), offset, limit))
 
-    def staff_orders(self, token: str, offset: int = 0, limit: int = 20) -> list[Order]:
+    def staff_orders(
+        self, token: str, offset: int = 0, limit: int = 20, state: str = "all"
+    ) -> list[Order]:
         self.expire()
         with self.uow() as uow:
             uow.authorize(token, "kitchen.read")
-            return self._issues(uow, uow.repository.orders(None, offset, limit))
+            return self._issues(uow, uow.repository.orders(None, offset, limit, state))
 
     def _issues(self, uow: OrderUnitOfWork, orders: list[Order]) -> list[Order]:
         affected = uow.reservations.troubled([order.id for order in orders], self.clock())

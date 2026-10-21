@@ -31,7 +31,7 @@ export function ProductionPage() {
     };
   }, [attempt]);
   return (
-    <PageShell staff navigation={<a href="/staff">{t.cabinet}</a>}>
+    <PageShell staff user={user} navigation={<a href="/staff">{t.cabinet}</a>}>
       {loading ? (
         <LoadingState />
       ) : error ? (

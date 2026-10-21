@@ -206,11 +206,15 @@ def own(
 
 @router.get("/staff", operation_id="listStaffOrders")
 def staff(
-    request: Request, service: Service, offset: Offset = 0, limit: Limit = 20
+    request: Request,
+    service: Service,
+    offset: Offset = 0,
+    limit: Limit = 20,
+    state: Literal["all", "active", "closed"] = "all",
 ) -> list[OrderResponse]:
     return [
         OrderResponse.from_order(o, staff=True)
-        for o in service.staff_orders(session_token(request), offset, limit)
+        for o in service.staff_orders(session_token(request), offset, limit, state)
     ]
 
 

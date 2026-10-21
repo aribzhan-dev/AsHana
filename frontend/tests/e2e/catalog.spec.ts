@@ -42,8 +42,8 @@ test("меню: черновик, публикация готового оста
     .click();
   let dialog = page.getByRole("dialog");
   await dialog.getByLabel("Название периода").fill("Обед из браузера");
-  await dialog.getByLabel("Начало (Алматы)").fill(starts);
-  await dialog.getByLabel("Окончание (Алматы)").fill(ends);
+  await dialog.getByLabel("Начало (Астана)").fill(starts);
+  await dialog.getByLabel("Окончание (Астана)").fill(ends);
   await expect(dialog.getByLabel("Опубликовать период")).not.toBeChecked();
   await dialog.getByRole("button", { name: "Сохранить период" }).click();
   await expect(dialog).not.toBeVisible();

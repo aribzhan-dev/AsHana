@@ -5,6 +5,7 @@ import {
   type Period,
   type MenuEntry,
 } from "../../shared/api/catalog";
+import { useOperation } from "../../shared/lib/useOperation";
 import { errorMessage } from "../../shared/lib/forms";
 import {
   almatyNow,
@@ -30,6 +31,8 @@ type Editor =
   | { kind: "period"; previous?: Period }
   | { kind: "entry"; previous?: MenuEntry };
 export function CatalogBoard({ onExpired }: { onExpired: () => void }) {
+  const toggle = useOperation(onExpired);
+  const [search, setSearch] = useState("");
   const [day, setDay] = useState(almatyNow().slice(0, 10)),
     [selected, setSelected] = useState<Period | null>(null);
   const [periods, setPeriods] = useState<Period[]>([]),
@@ -127,6 +130,16 @@ export function CatalogBoard({ onExpired }: { onExpired: () => void }) {
           {t.refresh}
         </Button>
       </div>
+      {selected && (
+        <Input
+          label="Поиск позиции на странице"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Название блюда"
+          leadingIcon="search"
+        />
+      )}
+      {toggle.error && <p role="alert">{toggle.error}</p>}
       {toast && <Toast onClose={() => setToast("")}>{toast}</Toast>}
       {loading ? (
         <LoadingState />
@@ -141,33 +154,73 @@ export function CatalogBoard({ onExpired }: { onExpired: () => void }) {
           )}
           <div className="production-grid">
             {selected
-              ? entries.map((entry) => (
-                  <Card key={entry.id} className="production-card">
-                    <div className="production-card-heading">
-                      <h3>{entry.name}</h3>
-                      <Badge>{entry.published ? t.published : t.draft}</Badge>
-                    </div>
-                    <p>{entry.description}</p>
-                    <div className="production-facts">
-                      <div>
-                        <span>{t.portion}</span>
-                        <strong>{entry.portion_label}</strong>
+              ? entries
+                  .filter((entry) =>
+                    entry.name
+                      .toLocaleLowerCase("ru")
+                      .includes(search.toLocaleLowerCase("ru")),
+                  )
+                  .map((entry) => (
+                    <Card key={entry.id} className="production-card">
+                      <div className="production-card-heading">
+                        <h3>{entry.name}</h3>
+                        <Badge>{entry.published ? t.published : t.draft}</Badge>
                       </div>
-                      <div>
-                        <span>{t.price}</span>
-                        <strong>{stockMoney(entry.price_minor)}</strong>
+                      <p>
+                        {entry.category || "Без категории"} ·{" "}
+                        {entry.description}
+                      </p>
+                      <div className="production-facts">
+                        <div>
+                          <span>{t.portion}</span>
+                          <strong>{entry.portion_label}</strong>
+                        </div>
+                        <div>
+                          <span>{t.price}</span>
+                          <strong>{stockMoney(entry.price_minor)}</strong>
+                        </div>
                       </div>
-                    </div>
-                    <Button
-                      variant="secondary"
-                      onClick={() =>
-                        setEditor({ kind: "entry", previous: entry })
-                      }
-                    >
-                      {t.editEntry}
-                    </Button>
-                  </Card>
-                ))
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          setEditor({ kind: "entry", previous: entry })
+                        }
+                      >
+                        {t.editEntry}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        loading={toggle.busy}
+                        onClick={() => {
+                          const body = {
+                            item_id: entry.item_id,
+                            description: entry.description,
+                            category: entry.category,
+                            portion_label: entry.portion_label,
+                            price_minor: entry.price_minor,
+                            expected_version: entry.version,
+                            published: !entry.published,
+                          };
+                          void toggle
+                            .run({ id: entry.id, ...body }, (key) =>
+                              catalogApi.saveEntry(
+                                selected.id,
+                                entry.id,
+                                body,
+                                key,
+                              ),
+                            )
+                            .then((ok) => {
+                              if (ok) refresh();
+                            });
+                        }}
+                      >
+                        {entry.published
+                          ? "Скрыть с сайта"
+                          : "Показать на сайте"}
+                      </Button>
+                    </Card>
+                  ))
               : periods.map((period) => (
                   <Card key={period.id} className="production-card">
                     <div className="production-card-heading">

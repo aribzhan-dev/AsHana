@@ -9,6 +9,7 @@ from ashana.modules.inventory.infrastructure import reservations  # noqa: F401
 from ashana.modules.inventory.infrastructure.database import metadata as inventory_metadata
 from ashana.modules.notifications.infrastructure.delivery import metadata as notifications_metadata
 from ashana.modules.orders.infrastructure.database import metadata as orders_metadata
+from ashana.modules.pos.infrastructure.database import metadata as pos_metadata
 from ashana.modules.production.infrastructure.database import metadata as production_metadata
 
 target_metadata = MetaData()
@@ -27,6 +28,10 @@ for table in catalog_metadata.tables.values():
         table.to_metadata(target_metadata)
 
 for table in orders_metadata.tables.values():
+    if table.name not in target_metadata.tables:
+        table.to_metadata(target_metadata)
+
+for table in pos_metadata.tables.values():
     if table.name not in target_metadata.tables:
         table.to_metadata(target_metadata)
 

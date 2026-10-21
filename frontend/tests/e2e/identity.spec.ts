@@ -51,15 +51,22 @@ test("администратор создаёт сотрудника, меняе
   await page.getByLabel("Пароль", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Войти", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Әлия", exact: true }),
+    page.getByRole("heading", { name: "Обзор столовой", exact: true }),
   ).toBeVisible();
-  await page.reload();
+  await page.goto("/staff/profile");
   await expect(
     page.getByRole("heading", { name: "Ваши сессии" }),
   ).toBeVisible();
+  await page.goto("/staff/team");
   const create = page.locator(".card").filter({
     has: page.getByRole("heading", { name: "Добавить сотрудника" }),
   });
+  await create.getByLabel("Имя сотрудника").fill("45353");
+  await expect(create.getByLabel("Имя сотрудника")).toHaveValue("");
+  await expect(create.getByLabel("Имя сотрудника")).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
   await create.getByLabel("Имя сотрудника").fill("Нұрсұлтан");
   await create.getByLabel("Логин").fill("worker90");
   await create.getByLabel("Пароль", { exact: true }).fill(password);
@@ -70,7 +77,7 @@ test("администратор создаёт сотрудника, меняе
   await expect(create.getByLabel("Пароль", { exact: true })).toHaveValue("");
   await expect(create.getByLabel("Телефон для связи")).toHaveAttribute(
     "placeholder",
-    "+7 (7XX) XXX-XX-XX",
+    "700 000 00 00",
   );
   for (const width of [360, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -103,7 +110,7 @@ test("администратор создаёт сотрудника, меняе
     await worker.getByLabel("Пароль", { exact: true }).fill(password);
     await worker.getByRole("button", { name: "Войти", exact: true }).click();
     await expect(
-      worker.getByRole("heading", { name: "Нұрсұлтан", exact: true }),
+      worker.getByRole("heading", { name: "Обзор столовой", exact: true }),
     ).toBeVisible();
     await expect(
       worker.getByRole("heading", { name: "Добавить сотрудника" }),
@@ -130,6 +137,7 @@ test("администратор создаёт сотрудника, меняе
   } finally {
     await workerContext.close();
   }
+  await page.goto("/staff/profile");
   await page
     .getByRole("button", { name: "Завершить сессию", exact: true })
     .first()

@@ -16,7 +16,9 @@ from ashana.bootstrap.errors import ErrorResponse, error_response, register_erro
 from ashana.bootstrap.inventory import inventory_service
 from ashana.bootstrap.order_worker import order_worker
 from ashana.bootstrap.orders import order_service
+from ashana.bootstrap.pos import pos_service
 from ashana.bootstrap.production import production_service
+from ashana.bootstrap.reporting import reporting_service
 from ashana.bootstrap.settings import Settings
 from ashana.modules.catalog.presentation.http import router as catalog_router
 from ashana.modules.identity.application.service import IdentityService
@@ -26,7 +28,9 @@ from ashana.modules.identity.presentation.http import router
 from ashana.modules.inventory.presentation.http import router as inventory_router
 from ashana.modules.notifications.infrastructure.delivery import TelegramSender
 from ashana.modules.orders.presentation.http import router as orders_router
+from ashana.modules.pos.presentation.http import router as pos_router
 from ashana.modules.production.presentation.http import router as production_router
+from ashana.modules.reporting.presentation.http import router as reporting_router
 
 logger = logging.getLogger("ashana")
 
@@ -57,8 +61,16 @@ def create_app(
             session_seconds=configured.session_seconds,
         )
         app.state.orders = order_service(engine, app.state.identity, configured)
+        app.state.pos = pos_service(
+            engine,
+            app.state.identity,
+            app.state.orders,
+            enabled=configured.environment != "production",
+        )
+        app.state.reporting = reporting_service(engine, app.state.identity)
         app.state.catalog = catalog_service(engine, app.state.identity)
         app.state.inventory = inventory_service(engine, app.state.identity)
+        app.state.cash_stock = inventory_service(engine, app.state.identity, cashier=True)
         app.state.production = production_service(engine, app.state.identity)
         app.state.readiness_probe = lambda: database_is_ready(engine)
         sender = (
@@ -95,6 +107,8 @@ def create_app(
     app.include_router(router)
     app.include_router(catalog_router)
     app.include_router(orders_router)
+    app.include_router(pos_router)
+    app.include_router(reporting_router)
     app.include_router(inventory_router)
     app.include_router(production_router)
 
@@ -116,6 +130,8 @@ def create_app(
                 "/api/v1/production/",
                 "/api/v1/catalog/",
                 "/api/v1/orders",
+                "/api/v1/pos",
+                "/api/v1/reports",
             )
         ):
             response.headers["Cache-Control"] = "no-store"

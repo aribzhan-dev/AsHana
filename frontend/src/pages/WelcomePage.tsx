@@ -108,7 +108,7 @@ export function WelcomePage() {
               {menu.entries.map((entry) => (
                 <Card key={entry.id} className="catalog-card">
                   <div>
-                    <Badge>{entry.period_name}</Badge>
+                    <Badge>{entry.category || entry.period_name}</Badge>
                     <p className="field-hint">
                       {stockDate(entry.starts_at)} — {stockDate(entry.ends_at)}
                     </p>

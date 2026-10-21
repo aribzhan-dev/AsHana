@@ -9,7 +9,6 @@ import {
 import {
   almatyInstant,
   almatyNow,
-  stockDate,
 } from "../../shared/lib/inventory-validation";
 import { errorMessage, focusInvalid } from "../../shared/lib/forms";
 import { useOperation } from "../../shared/lib/useOperation";
@@ -17,8 +16,6 @@ import { Input, Select } from "../../shared/ui/Input";
 import { Button } from "../../shared/ui/Button";
 import {
   Alert,
-  Badge,
-  Card,
   EmptyState,
   ErrorState,
   LoadingState,
@@ -94,7 +91,7 @@ function SlotForm({
       <p>{period.name}</p>
       <fieldset className="plain-fieldset form-stack" disabled={op.busy}>
         <Input
-          label="Начало выдачи (Алматы)"
+          label="Начало выдачи (Астана)"
           type="datetime-local"
           value={starts}
           onChange={(e) => setStarts(e.target.value)}
@@ -141,6 +138,8 @@ function SlotForm({
   );
 }
 export function SlotManager() {
+  const [slotDay, setSlotDay] = useState("");
+  const [hour, setHour] = useState("");
   const [day, setDay] = useState(almatyNow().slice(0, 10)),
     [periods, setPeriods] = useState<Period[]>([]),
     [periodId, setPeriodId] = useState(""),
@@ -188,7 +187,7 @@ export function SlotManager() {
     <div className="form-stack">
       <h2>Время получения</h2>
       <Input
-        label="Дата начала периода (Алматы)"
+        label="Дата начала периода (Астана)"
         type="date"
         value={day}
         onChange={(e) => {
@@ -249,25 +248,76 @@ export function SlotManager() {
             <>
               <Button onClick={() => setEditor({})}>Добавить слот</Button>
               {!slots.length && <EmptyState title="Слотов пока нет" />}
-              <div className="production-grid">
-                {slots.map((s) => (
-                  <Card key={s.id} className="production-card">
-                    <h3>
-                      {stockDate(s.starts_at)} — {stockDate(s.ends_at)}
-                    </h3>
-                    <Badge>{s.enabled ? "Включён" : "Закрыт"}</Badge>
-                    <p>Оплатить до {stockDate(s.cutoff_at)}</p>
-                    <p>
-                      Занято {s.occupied} из {s.capacity}
-                    </p>
-                    <Button
-                      variant="secondary"
+              <div className="button-row">
+                <Select
+                  label="День выдачи"
+                  value={slotDay}
+                  onChange={(e) => {
+                    setSlotDay(e.target.value);
+                    setHour("");
+                  }}
+                >
+                  <option value="">Все дни</option>
+                  {[
+                    ...new Set(
+                      slots.map((s) => local(s.starts_at).slice(0, 10)),
+                    ),
+                  ].map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Час выдачи"
+                  value={hour}
+                  onChange={(e) => setHour(e.target.value)}
+                >
+                  <option value="">Все часы</option>
+                  {[
+                    ...new Set(
+                      slots
+                        .filter(
+                          (s) =>
+                            !slotDay || local(s.starts_at).startsWith(slotDay),
+                        )
+                        .map((s) => local(s.starts_at).slice(11, 13)),
+                    ),
+                  ].map((h) => (
+                    <option key={h} value={h}>
+                      {h}:00
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="slot-grid">
+                {slots
+                  .filter(
+                    (s) =>
+                      (!slotDay || local(s.starts_at).startsWith(slotDay)) &&
+                      (!hour || local(s.starts_at).slice(11, 13) === hour),
+                  )
+                  .map((s) => (
+                    <button
+                      type="button"
+                      className="slot-tile"
+                      key={s.id}
                       onClick={() => setEditor({ previous: s })}
+                      aria-label={`Изменить слот ${local(s.starts_at)}`}
                     >
-                      Изменить слот
-                    </Button>
-                  </Card>
-                ))}
+                      <small>{local(s.starts_at).slice(0, 10)}</small>
+                      <strong>
+                        {local(s.starts_at).slice(11)}–
+                        {local(s.ends_at).slice(11)}
+                      </strong>
+                      <span>
+                        {s.enabled
+                          ? `${s.occupied} / ${s.capacity} занято`
+                          : "Закрыт"}
+                      </span>
+                      <small>Оплатить до {local(s.cutoff_at).slice(11)}</small>
+                    </button>
+                  ))}
               </div>
             </>
           )}

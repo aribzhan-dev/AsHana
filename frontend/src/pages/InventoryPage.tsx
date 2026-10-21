@@ -1,3 +1,5 @@
+import { ReceivingBoard } from "../features/receiving/ReceivingBoard";
+import { Directories } from "../features/receiving/Directories";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, identityApi, type Staff } from "../shared/api/identity";
 import { PageShell } from "../shared/ui/PageShell";
@@ -31,7 +33,7 @@ export function InventoryPage() {
     };
   }, [attempt]);
   return (
-    <PageShell staff navigation={<a href="/staff">{t.cabinet}</a>}>
+    <PageShell staff user={user} navigation={<a href="/staff">{t.cabinet}</a>}>
       {loading ? (
         <LoadingState />
       ) : error ? (
@@ -47,6 +49,10 @@ export function InventoryPage() {
         <LoginForm onLogin={setUser} />
       ) : !user.permissions.includes("inventory.manage") ? (
         <Alert>{t.forbidden}</Alert>
+      ) : window.location.pathname === "/staff/receipts" ? (
+        <ReceivingBoard onExpired={expire} />
+      ) : window.location.pathname === "/staff/settings" ? (
+        <Directories onExpired={expire} />
       ) : (
         <InventoryBoard onExpired={expire} />
       )}

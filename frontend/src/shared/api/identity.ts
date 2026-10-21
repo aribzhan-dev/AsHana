@@ -3,7 +3,13 @@ import { identityRu as t } from "../locales/identity";
 
 export type Staff = components["schemas"]["UserResponse"];
 export type StaffSession = components["schemas"]["SessionResponse"];
-export type Role = components["schemas"]["Role"];
+export type Role = string;
+export type RoleDefinition = {
+  code: string;
+  name: string;
+  permissions: string[];
+  version: number | null;
+};
 export { ApiError } from "./http";
 import { ApiError, record, strings, request } from "./http";
 function staff(value: unknown): Staff {
@@ -15,8 +21,7 @@ function staff(value: unknown): Staff {
     typeof value.name !== "string" ||
     typeof value.is_demo !== "boolean" ||
     !strings(value.permissions) ||
-    !strings(value.roles) ||
-    !value.roles.every((role) => Object.hasOwn(t.roleLabels, role))
+    !strings(value.roles)
   )
     throw new ApiError(0, t.genericError);
   return {
@@ -50,7 +55,29 @@ function sessionList(value: unknown): StaffSession[] {
     };
   });
 }
+function roleList(value: unknown): RoleDefinition[] {
+  if (
+    !Array.isArray(value) ||
+    value.some(
+      (v) =>
+        !record(v) ||
+        typeof v.code !== "string" ||
+        typeof v.name !== "string" ||
+        !strings(v.permissions) ||
+        !Number.isSafeInteger(v.version),
+    )
+  )
+    throw new ApiError(0, t.genericError);
+  return value as RoleDefinition[];
+}
 export const identityApi = {
+  listRoles: () => request("/admin/roles").then(roleList),
+  saveRole: (role: RoleDefinition) => request("/admin/roles", "PUT", role),
+  listStaff: (offset = 0) =>
+    request(`/admin/users?offset=${offset}`).then((v) => {
+      if (!Array.isArray(v)) throw new ApiError(0, t.genericError);
+      return v.map(staff);
+    }),
   me: () => request("/auth/me").then(staff),
   login: (login: string, password: string) =>
     request("/auth/login", "POST", { login, password }).then(staff),

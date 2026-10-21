@@ -17,8 +17,42 @@ export type IconName =
   | "search"
   | "plus"
   | "clock"
-  | "minus";
+  | "minus"
+  | "grid"
+  | "bag"
+  | "box"
+  | "chart"
+  | "utensils";
 const paths: Record<IconName, React.ReactNode> = {
+  grid: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </>
+  ),
+  bag: (
+    <>
+      <path d="M4 7h16l1 14H3L4 7Z" />
+      <path d="M8 7V5a4 4 0 0 1 8 0v2" />
+    </>
+  ),
+  box: (
+    <>
+      <path d="m3 7 9-4 9 4v10l-9 4-9-4V7Zm0 0 9 4 9-4M12 11v10M7 5l10 4" />
+    </>
+  ),
+  chart: (
+    <>
+      <path d="M4 3v18h17M8 16v-4m5 4V8m5 8V5" />
+    </>
+  ),
+  utensils: (
+    <>
+      <path d="M4 3v6a3 3 0 0 0 6 0V3M7 3v18M20 3c-4 0-5 7-5 10h5M20 3v18" />
+    </>
+  ),
   sun: (
     <>
       <circle cx="12" cy="12" r="4" />

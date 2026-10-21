@@ -117,7 +117,7 @@ export function Cart({
           <Alert>{error}</Alert>
         ) : (
           <Select
-            label="Время получения (Алматы)"
+            label="Время получения (Астана)"
             value={slot}
             onChange={(e) => setSlot(e.target.value)}
             required
@@ -157,8 +157,8 @@ export function Cart({
         </p>
       )}
       <p className="field-hint">
-        Сначала резерв и тестовая оплата. Заказ появится только после её
-        подтверждения. Реальные деньги не списываются.
+        Сначала резерв и оплата. Заказ появится только после её подтверждения.
+        Реальные деньги не списываются.
       </p>
       {op.error && <Alert>{op.error}</Alert>}
       <Button

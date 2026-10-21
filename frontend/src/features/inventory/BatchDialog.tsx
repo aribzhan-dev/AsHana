@@ -1,3 +1,4 @@
+import { displayText } from "../../shared/lib/display-text";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -32,7 +33,9 @@ export function BatchDialog({
   onClose,
   onSaved,
   onExpired,
+  change = inventoryApi.change,
 }: {
+  change?: typeof inventoryApi.change;
   batch: StockBatch;
   operation: StockChange["operation"];
   onClose: () => void;
@@ -73,7 +76,7 @@ export function BatchDialog({
     };
     if (
       await mutation.run({ id: batch.id, ...data }, (key) =>
-        inventoryApi.change(batch.id, data, key),
+        change(batch.id, data, key),
       )
     ) {
       onSaved();
@@ -84,7 +87,7 @@ export function BatchDialog({
     <Dialog
       open
       title={t.actions[operation]}
-      description={`${batch.item_name} · ${batch.label}`}
+      description={`${batch.item_name} · ${displayText(batch.label)}`}
       onClose={onClose}
       busy={mutation.busy}
     >
@@ -209,7 +212,7 @@ export function HistoryDialog({
     <Dialog
       open
       title={t.history}
-      description={`${batch.item_name} · ${batch.label}`}
+      description={`${batch.item_name} · ${displayText(batch.label)}`}
       onClose={onClose}
     >
       {loading ? (
@@ -238,7 +241,7 @@ export function HistoryDialog({
                 {stockNumber(row.after)}{" "}
                 {t.units[batch.unit as keyof typeof t.units]}
               </p>
-              <p>{row.reason}</p>
+              <p>{displayText(row.reason)}</p>
               <small>
                 {t.author}: {row.actor_id}
               </small>

@@ -1,3 +1,4 @@
+import { displayText } from "../../shared/lib/display-text";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ApiError } from "../../shared/api/http";
@@ -56,7 +57,7 @@ export function RecipeForm({
   const [portion, setPortion] = useState(initialPortion.quantity),
     [portionUnit, setPortionUnit] = useState<RawUnit>(initialPortion.unit);
   const [instructions, setInstructions] = useState(
-    previous?.instructions || "",
+    previous ? displayText(previous.instructions) : "",
   );
   const [lines, setLines] = useState(
     () =>

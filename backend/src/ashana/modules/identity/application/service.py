@@ -1,4 +1,5 @@
 import hashlib
+import re
 import secrets
 from collections.abc import Callable
 from dataclasses import replace
@@ -12,9 +13,11 @@ from ashana.modules.identity.application.ports import (
     Phones,
 )
 from ashana.modules.identity.domain.models import (
+    PERMISSIONS,
     IdentityError,
     Principal,
     Role,
+    RoleDefinition,
     Session,
     User,
     normalize_login,
@@ -150,7 +153,7 @@ class IdentityService:
             return user
 
     def _new_user(
-        self, name: str, login: str, password: str, roles: frozenset[Role], phone: str | None = None
+        self, name: str, login: str, password: str, roles: frozenset[str], phone: str | None = None
     ) -> User:
         validate_password(password)
         if not roles:
@@ -175,7 +178,7 @@ class IdentityService:
         name: str,
         login: str,
         password: str,
-        roles: frozenset[Role],
+        roles: frozenset[str],
         phone: str | None = None,
     ) -> User:
         # Authorize before expensive hashing, then recheck under the role-change lock.
@@ -191,7 +194,9 @@ class IdentityService:
                     "Этот логин уже используется",
                     {"login": ["Этот логин уже используется"]},
                 )
+            self._validate_roles(uow.repository, roles)
             uow.repository.add_user(user)
+            user = uow.repository.user_by_id(user.id) or user
             uow.repository.audit(
                 "staff_created",
                 principal.user.id,
@@ -202,7 +207,7 @@ class IdentityService:
             uow.commit()
             return user
 
-    def assign_roles(self, token: str, user_id: UUID, roles: frozenset[Role]) -> User:
+    def assign_roles(self, token: str, user_id: UUID, roles: frozenset[str]) -> User:
         with self.uow() as uow:
             uow.repository.lock_role_changes()
             principal = self._principal(uow, token)
@@ -213,6 +218,7 @@ class IdentityService:
                     "Выберите хотя бы одну роль",
                     {"roles": ["Выберите хотя бы одну роль"]},
                 )
+            self._validate_roles(uow.repository, roles)
             target = uow.repository.user_by_id(user_id, lock=True)
             if not target:
                 raise IdentityError("NOT_FOUND", "Сотрудник не найден")
@@ -232,8 +238,79 @@ class IdentityService:
                     self.clock(),
                     {"before": sorted(target.roles), "after": sorted(roles)},
                 )
+            result = uow.repository.user_by_id(user_id) or replace(target, roles=roles)
             uow.commit()
-            return replace(target, roles=roles)
+            return result
+
+    def _validate_roles(self, repository: IdentityRepository, assigned: frozenset[str]) -> None:
+        known = {role.code for role in repository.role_definitions()}
+        if not assigned or not assigned <= known:
+            raise IdentityError(
+                "VALIDATION_ERROR",
+                "Выберите существующие роли",
+                {"roles": ["Выберите существующие роли"]},
+            )
+
+    def list_staff(self, token: str, offset: int = 0, limit: int = 100) -> list[User]:
+        with self.uow() as uow:
+            self._principal(uow, token).require("identity.manage")
+            return uow.repository.list_users(max(0, offset), min(100, max(1, limit)))
+
+    def list_roles(self, token: str) -> list[RoleDefinition]:
+        with self.uow() as uow:
+            self._principal(uow, token).require("identity.manage")
+            return uow.repository.role_definitions()
+
+    def save_role(
+        self, token: str, code: str, name: str, permissions: frozenset[str], version: int | None
+    ) -> RoleDefinition:
+        if (
+            not re.fullmatch(r"[a-z][a-z0-9_]{2,19}", code)
+            or not name.strip()
+            or len(name.strip()) > 100
+        ):
+            raise IdentityError(
+                "VALIDATION_ERROR",
+                "Укажите название роли и код из 3–20 латинских букв, цифр и подчёркиваний",
+            )
+        if not permissions <= PERMISSIONS:
+            raise IdentityError("VALIDATION_ERROR", "Выберите допустимые права")
+        # Preserve a guaranteed recovery role; its other permissions remain editable.
+        if code == "admin" and "identity.manage" not in permissions:
+            raise IdentityError(
+                "LAST_ADMIN", "У роли администратора необходимо сохранить управление сотрудниками"
+            )
+        with self.uow() as uow:
+            uow.repository.lock_role_changes()
+            actor = self._principal(uow, token)
+            actor.require("identity.manage")
+            existing = next(
+                (role for role in uow.repository.role_definitions() if role.code == code), None
+            )
+            if (existing is None and version is not None) or (
+                existing is not None and existing.version != version
+            ):
+                raise IdentityError("CONFLICT", "Роль уже изменена или код занят. Обновите список")
+            result = RoleDefinition(
+                code, name.strip(), permissions, (existing.version + 1) if existing else 1
+            )
+            uow.repository.save_role(result, existing is None)
+            if existing and existing.permissions != permissions:
+                uow.repository.revoke_role_sessions(code, self.clock())
+            uow.repository.audit(
+                "role_updated" if existing else "role_created",
+                actor.user.id,
+                actor.user.id,
+                self.clock(),
+                {
+                    "role": [code],
+                    "name": [result.name],
+                    "before": sorted(existing.permissions) if existing else [],
+                    "after": sorted(permissions),
+                },
+            )
+            uow.commit()
+            return result
 
     def bootstrap_admin(
         self, name: str, login: str, password: str, phone: str | None = None

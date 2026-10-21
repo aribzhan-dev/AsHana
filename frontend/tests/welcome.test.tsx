@@ -29,7 +29,7 @@ describe("Стартовый экран", () => {
     await userEvent.click(screen.getByRole("button", { name: "Повторить" }));
     expect(await screen.findByText(/Меню обновлено:/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Тестовая оплата — реальные деньги/),
+      screen.getByText(/Выберите блюда и удобное время/),
     ).toBeInTheDocument();
   });
 

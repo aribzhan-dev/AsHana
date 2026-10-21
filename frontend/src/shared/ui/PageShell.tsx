@@ -1,3 +1,5 @@
+import type { Staff } from "../api/identity";
+import { StaffNavigation } from "./StaffNavigation";
 import type { ReactNode } from "react";
 import { uiRu as t } from "../locales/ui";
 import { ru } from "../locales/ru";
@@ -7,13 +9,17 @@ export function PageShell({
   children,
   navigation,
   staff = false,
+  user,
 }: {
   children: ReactNode;
   navigation: ReactNode;
   staff?: boolean;
+  user?: Staff | null;
 }) {
   return (
-    <div className={`shell ${staff ? "staff-shell" : ""}`}>
+    <div
+      className={`shell ${staff ? "staff-shell" : ""} ${staff && user ? "workspace-shell" : ""}`}
+    >
       <a className="skip-link" href="#main">
         {ru.skip}
       </a>
@@ -32,6 +38,7 @@ export function PageShell({
           <ThemeSelect />
         </nav>
       </header>
+      {staff && user && <StaffNavigation user={user} />}
       <main id="main" tabIndex={-1} className={staff ? "staff-main" : ""}>
         {children}
       </main>

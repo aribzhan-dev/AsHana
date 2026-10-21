@@ -119,11 +119,11 @@ export const ordersApi = {
     await guest();
     return order(await keyed("/orders/checkout", body, key));
   },
-  list: async (staff = false, offset = 0) => {
+  list: async (staff = false, offset = 0, state = "all") => {
     if (!staff) await guest();
     return list(
       await request(
-        `/orders${staff ? "/staff" : ""}?offset=${offset}&limit=20`,
+        `/orders${staff ? "/staff" : ""}?offset=${offset}&limit=20${staff ? `&state=${state}` : ""}`,
       ),
       order,
     );

@@ -27,7 +27,7 @@ export function item(value: unknown): StockItem {
     return invalid();
   return value as StockItem;
 }
-function batch(value: unknown): StockBatch {
+export function batch(value: unknown): StockBatch {
   if (
     !record(value) ||
     typeof value.item_kind !== "string" ||
@@ -114,10 +114,10 @@ export const inventoryApi = {
     request(`/inventory/items?offset=${offset}&limit=100`).then((value) =>
       list(value, item),
     ),
-  batches: (offset = 0) =>
-    request(`/inventory/batches?offset=${offset}&limit=20`).then((value) =>
-      list(value, batch),
-    ),
+  batches: (offset = 0, warehouse = "", query = "") =>
+    request(
+      `/inventory/batches?offset=${offset}&limit=20${warehouse ? `&warehouse_id=${warehouse}` : ""}&query=${encodeURIComponent(query)}`,
+    ).then((value) => list(value, batch)),
   movements: (id: string, offset = 0) =>
     request(
       `/inventory/batches/${id}/movements?offset=${offset}&limit=20`,

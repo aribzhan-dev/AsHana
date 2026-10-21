@@ -27,7 +27,7 @@ it("ошибки и подсказки связаны с полем, placeholder
 it("телефон является необязательным контактным полем с placeholder", () => {
   render(<PhoneInput label="Телефон для связи" />);
   const field = screen.getByLabelText("Телефон для связи");
-  expect(field).toHaveAttribute("placeholder", "+7 (7XX) XXX-XX-XX");
+  expect(field).toHaveAttribute("placeholder", "700 000 00 00");
   expect(field).not.toBeRequired();
 });
 it("loading-кнопка блокирует повторное действие и не отправляет форму по умолчанию", async () => {
@@ -126,4 +126,32 @@ it("вход отправляет логин и сохраняет сервер�
     "Недопустимый логин",
   );
   login.mockRestore();
+});
+
+it("телефон сохраняет +7, принимает вставку номера и отклоняет буквы и лишние цифры", async () => {
+  function Form() {
+    const [phone, setPhone] = useState("");
+    return (
+      <>
+        <PhoneInput
+          label="Контакт"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+        <output>{phone}</output>
+      </>
+    );
+  }
+  render(<Form />);
+  const input = screen.getByLabelText("Контакт");
+  fireEvent.change(input, { target: { value: "+7 (701) 000-00-11" } });
+  expect(input).toHaveValue("7010000011");
+  expect(screen.getByText("+77010000011")).toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "7010000011a" } });
+  expect(input).toHaveValue("7010000011");
+  expect(input).toHaveAttribute("aria-invalid", "true");
+  fireEvent.change(input, { target: { value: "701000001122" } });
+  expect(input).toHaveValue("7010000011");
+  fireEvent.change(input, { target: { value: "" } });
+  expect(input).toHaveValue("");
 });

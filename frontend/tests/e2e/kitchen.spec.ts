@@ -31,11 +31,11 @@ test("готовую еду комплектуют и выдают по коду
   });
   await findCard(page, item);
   await item.getByRole("button", { name: "В корзину" }).click();
-  const slot = page.getByLabel("Время получения (Алматы)");
+  const slot = page.getByLabel("Время получения (Астана)");
   await expect(slot.locator("option")).toHaveCount(2);
   await slot.selectOption({ index: 1 });
   await page.getByRole("button", { name: "Заказать", exact: true }).click();
-  await page.getByRole("button", { name: "Тестовая оплата: успешно" }).click();
+  await page.getByRole("button", { name: "Оплатить заказ" }).click();
   await expect(page.getByTestId("pickup-code")).toBeVisible();
   const code = await page.getByTestId("pickup-code").innerText();
   const orders = (await (await page.request.get("/api/v1/orders")).json()) as {
@@ -71,13 +71,13 @@ test("готовую еду комплектуют и выдают по коду
     .getByRole("button", { name: "Готов к выдаче", exact: true })
     .click();
   await expect(
-    card.getByRole("button", { name: "Выдать заказ (ДЕМО)" }),
+    card.getByRole("button", { name: "Выдать заказ" }),
   ).toBeVisible();
   for (const width of [360, 390, 768, 1280, 1440]) {
     await staff.setViewportSize({ width, height: 900 });
     for (const theme of ["light", "dark"]) {
       await selectTheme(staff, theme);
-      await card.getByRole("button", { name: "Выдать заказ (ДЕМО)" }).click();
+      await card.getByRole("button", { name: "Выдать заказ" }).click();
       const dialog = staff.getByRole("dialog");
       expect(
         await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth),
@@ -96,18 +96,14 @@ test("готовую еду комплектуют и выдают по коду
         .click();
     }
   }
-  await card.getByRole("button", { name: "Выдать заказ (ДЕМО)" }).click();
+  await card.getByRole("button", { name: "Выдать заказ" }).click();
   await staff.getByLabel("Код получения").fill("ZZZZZZZZ");
-  await staff
-    .getByRole("button", { name: "Подтвердить выдачу (ДЕМО)" })
-    .click();
+  await staff.getByRole("button", { name: "Подтвердить выдачу" }).click();
   await expect(
     staff.getByText("Введите 8 символов кода с экрана посетителя"),
   ).toBeVisible();
   await staff.getByLabel("Код получения").fill(code);
-  await staff
-    .getByRole("button", { name: "Подтвердить выдачу (ДЕМО)" })
-    .click();
+  await staff.getByRole("button", { name: "Подтвердить выдачу" }).click();
   await expect(staff.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Обновить заказы" }).click();
   await expect(page.locator(".order-card")).toContainText("Выдан");

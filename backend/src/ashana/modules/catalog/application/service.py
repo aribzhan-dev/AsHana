@@ -141,6 +141,7 @@ class CatalogService:
         portion_label: str,
         price: int,
         published: bool,
+        category: str = "",
     ) -> Result:
         def action(uow: CatalogUnitOfWork, actor: UUID, now: datetime) -> Result:
             if not uow.repository.period(period_id, lock=True):
@@ -171,6 +172,7 @@ class CatalogService:
                 now,
                 item.name,
                 item.unit,
+                text_value(category, "category", 60) if category.strip() else "",
             )
             uow.repository.save_entry(entry, new=current is None)
             uow.repository.audit(
@@ -188,6 +190,7 @@ class CatalogService:
                 "expected_version": expected_version,
                 "item_id": item_id,
                 "description": description,
+                "category": category,
                 "portion_label": portion_label,
                 "price_minor": price,
                 "published": published,

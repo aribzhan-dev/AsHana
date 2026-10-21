@@ -1,3 +1,4 @@
+import { displayText } from "../../shared/lib/display-text";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ApiError } from "../../shared/api/http";
@@ -207,7 +208,7 @@ export function ProductionForm({
                           b.status !== "active" || Number(b.available) <= 0
                         }
                       >
-                        {b.label} · {stockNumber(b.available)}{" "}
+                        {displayText(b.label)} · {stockNumber(b.available)}{" "}
                         {s.units[b.unit as "kg" | "l"]} ·{" "}
                         {s.states[b.status as keyof typeof s.states]}
                       </option>

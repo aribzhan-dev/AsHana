@@ -7,13 +7,15 @@ export function CheckboxGroup<T extends string>({
   onChange,
   disabled,
   error,
+  hint,
 }: {
   label: string;
   value: T[];
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; description?: string }[];
   onChange: (value: T[]) => void;
   disabled?: boolean;
   error?: string;
+  hint?: string;
 }) {
   const id = useId();
   return (
@@ -29,6 +31,7 @@ export function CheckboxGroup<T extends string>({
           <label key={option.value} className="check-label">
             <input
               type="checkbox"
+              aria-label={option.label}
               checked={value.includes(option.value)}
               onChange={(event) =>
                 onChange(
@@ -38,10 +41,14 @@ export function CheckboxGroup<T extends string>({
                 )
               }
             />
-            {option.label}
+            <span>
+              {option.label}
+              {option.description && <small>{option.description}</small>}
+            </span>
           </label>
         ))}
       </div>
+      {hint && <p className="field-hint">{hint}</p>}
       {error && (
         <p id={id} className="field-error">
           {error}

@@ -40,24 +40,18 @@ it("оформление до оплаты отделено от заказа, �
     screen.getByRole("heading", { name: /Оформление/ }),
   ).toBeInTheDocument();
   expect(screen.getByText(/Это ещё не заказ/)).toBeInTheDocument();
-  await userEvent.click(
-    screen.getByRole("button", { name: "Тестовая оплата: успешно" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Оплатить заказ" }));
   await screen.findByText(/Ответ не получен/);
   expect(changed).not.toHaveBeenCalled();
-  await userEvent.click(
-    screen.getByRole("button", { name: "Тестовая оплата: успешно" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Оплатить заказ" }));
   await waitFor(() => expect(changed).toHaveBeenCalledOnce());
   expect(pay.mock.calls[0]?.[2]).toBe(pay.mock.calls[1]?.[2]);
 });
 it("отказ не показывает подтверждённый заказ", async () => {
   vi.spyOn(ordersApi, "pay").mockResolvedValue(checkout);
   render(<OrderCard order={checkout} staff={false} onChanged={vi.fn()} />);
-  await userEvent.click(
-    screen.getByRole("button", { name: "Тестовая оплата: отказ" }),
-  );
-  await screen.findByText(/Тестовая оплата отклонена/);
+  await userEvent.click(screen.getByRole("button", { name: "Оплатить заказ" }));
+  await screen.findByText(/Оплата не подтверждена\. Можно/);
   expect(screen.queryByText("Принят")).not.toBeInTheDocument();
 });
 it("неверный денежный ответ заказа отклоняется", async () => {
@@ -111,16 +105,14 @@ it("выдача требует кода посетителя и подтвер�
       onChanged={vi.fn()}
     />,
   );
+  await userEvent.click(screen.getByRole("button", { name: "Выдать заказ" }));
   await userEvent.click(
-    screen.getByRole("button", { name: "Выдать заказ (ДЕМО)" }),
-  );
-  await userEvent.click(
-    screen.getByRole("button", { name: "Подтвердить выдачу (ДЕМО)" }),
+    screen.getByRole("button", { name: "Подтвердить выдачу" }),
   );
   expect(transition).not.toHaveBeenCalled();
   await userEvent.type(screen.getByLabelText("Код получения"), "a12b34cd");
   await userEvent.click(
-    screen.getByRole("button", { name: "Подтвердить выдачу (ДЕМО)" }),
+    screen.getByRole("button", { name: "Подтвердить выдачу" }),
   );
   await waitFor(() => expect(transition).toHaveBeenCalledOnce());
   expect(transition.mock.calls[0]?.[1]).toMatchObject({
@@ -139,7 +131,7 @@ it("у кухни без права выдачи и у выданного зак
     />,
   );
   expect(
-    screen.queryByRole("button", { name: "Выдать заказ (ДЕМО)" }),
+    screen.queryByRole("button", { name: "Выдать заказ" }),
   ).not.toBeInTheDocument();
   rerender(
     <OrderCard
@@ -150,6 +142,6 @@ it("у кухни без права выдачи и у выданного зак
     />,
   );
   expect(
-    screen.queryByRole("button", { name: "Выдать заказ (ДЕМО)" }),
+    screen.queryByRole("button", { name: "Выдать заказ" }),
   ).not.toBeInTheDocument();
 });

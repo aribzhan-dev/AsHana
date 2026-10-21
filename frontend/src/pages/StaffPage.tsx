@@ -2,9 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, identityApi, type Staff } from "../shared/api/identity";
 import { errorMessage } from "../shared/lib/forms";
 import { identityRu as t } from "../shared/locales/identity";
-import { catalogRu } from "../shared/locales/catalog";
-import { productionRu } from "../shared/locales/production";
-import { inventoryRu } from "../shared/locales/inventory";
 import { Button } from "../shared/ui/Button";
 import {
   Alert,
@@ -16,6 +13,7 @@ import {
 import { PageShell } from "../shared/ui/PageShell";
 import { LoginForm } from "../features/identity/LoginForm";
 import { StaffManagement } from "../features/identity/StaffManagement";
+import { Dashboard } from "../features/reporting/Dashboard";
 import { SessionsPanel } from "../features/identity/SessionsPanel";
 
 function Cabinet({ user, onExpired }: { user: Staff; onExpired: () => void }) {
@@ -35,11 +33,25 @@ function Cabinet({ user, onExpired }: { user: Staff; onExpired: () => void }) {
       setBusy(false);
     }
   }
+  const section = window.location.pathname;
+  if (section === "/staff")
+    return <Dashboard user={user} onExpired={onExpired} />;
+  if (section === "/staff/team")
+    return (
+      <>
+        <h1>Сотрудники и доступ</h1>
+        {user.permissions.includes("identity.manage") ? (
+          <StaffManagement current={user} onExpired={onExpired} />
+        ) : (
+          <Alert>Управление сотрудниками доступно администратору.</Alert>
+        )}
+      </>
+    );
   return (
     <>
       <div className="page-heading">
         <p className="eyebrow">{t.team}</p>
-        <h1>{t.title}</h1>
+        <h1>Профиль</h1>
       </div>
       <Card className="profile">
         <div>
@@ -50,10 +62,11 @@ function Cabinet({ user, onExpired }: { user: Staff; onExpired: () => void }) {
           </p>
           <div className="badges">
             {user.roles.map((role) => (
-              <Badge key={role}>{t.roleLabels[role]}</Badge>
+              <Badge key={role}>
+                {(t.roleLabels as Record<string, string>)[role] || role}
+              </Badge>
             ))}
           </div>
-          {user.is_demo && <p className="field-hint">{t.demo}</p>}
         </div>
         <Button
           variant="secondary"
@@ -65,30 +78,7 @@ function Cabinet({ user, onExpired }: { user: Staff; onExpired: () => void }) {
         </Button>
         {error && <Alert>{error}</Alert>}
       </Card>
-      {user.permissions.includes("inventory.manage") && (
-        <a className="button button-primary" href="/staff/inventory">
-          {inventoryRu.title}
-        </a>
-      )}
-      {user.permissions.includes("production.manage") && (
-        <a className="button button-primary" href="/staff/production">
-          {productionRu.title}
-        </a>
-      )}
-      {user.permissions.includes("catalog.manage") && (
-        <a className="button button-primary" href="/staff/catalog">
-          {catalogRu.title}
-        </a>
-      )}
-      {user.permissions.includes("kitchen.read") && (
-        <a className="button button-primary" href="/staff/orders">
-          Заказы
-        </a>
-      )}
       <SessionsPanel onExpired={onExpired} />
-      {user.permissions.includes("identity.manage") && (
-        <StaffManagement current={user} onExpired={onExpired} />
-      )}
     </>
   );
 }
@@ -117,7 +107,7 @@ export function StaffPage() {
     };
   }, [attempt]);
   return (
-    <PageShell staff navigation={<a href="/">{t.guest}</a>}>
+    <PageShell staff user={user} navigation={<a href="/">{t.guest}</a>}>
       {loading ? (
         <LoadingState />
       ) : error ? (

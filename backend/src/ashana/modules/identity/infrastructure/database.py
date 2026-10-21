@@ -23,7 +23,7 @@ from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.engine import Connection, Engine, RowMapping
 
 from ashana.modules.identity.application.ports import IdentityRepository
-from ashana.modules.identity.domain.models import Role, Session, User
+from ashana.modules.identity.domain.models import Role, RoleDefinition, Session, User
 
 metadata = MetaData()
 users = Table(
@@ -41,7 +41,14 @@ users = Table(
     CheckConstraint("phone ~ '^\\+7[0-9]{10}$'", name="ck_identity_phone"),
     CheckConstraint("char_length(name) BETWEEN 1 AND 100", name="ck_identity_name"),
 )
-roles = Table("identity_roles", metadata, Column("code", String(20), primary_key=True))
+roles = Table(
+    "identity_roles",
+    metadata,
+    Column("code", String(20), primary_key=True),
+    Column("name", String(100), nullable=False),
+    Column("permissions", JSONB, nullable=False),
+    Column("version", Integer, nullable=False),
+)
 user_roles = Table(
     "identity_user_roles",
     metadata,
@@ -88,19 +95,28 @@ class PostgresIdentityRepository:
     def _user(self, row: RowMapping | None) -> User | None:
         if row is None:
             return None
-        assigned = self.connection.execute(
-            select(user_roles.c.role).where(user_roles.c.user_id == row["id"])
+        assigned = (
+            self.connection.execute(
+                select(user_roles.c.role).where(user_roles.c.user_id == row["id"])
+            )
+            .scalars()
+            .all()
+        )
+        granted = self.connection.execute(
+            select(roles.c.permissions).where(roles.c.code.in_(assigned))
         ).scalars()
+        permissions = frozenset(p for group in granted for p in group)
         return User(
             row["id"],
             row["login"],
             row["phone"],
             row["name"],
             row["password_hash"],
-            frozenset(Role(role) for role in assigned),
+            frozenset(assigned),
             row["created_at"],
             row["is_active"],
             row["is_demo"],
+            permissions,
         )
 
     def find_user(self, login: str, *, lock: bool = False) -> User | None:
@@ -129,14 +145,55 @@ class PostgresIdentityRepository:
             )
         )
         self.connection.execute(
-            user_roles.insert(), [{"user_id": user.id, "role": role.value} for role in user.roles]
+            user_roles.insert(), [{"user_id": user.id, "role": str(role)} for role in user.roles]
         )
 
-    def update_roles(self, user_id: UUID, roles: frozenset[Role]) -> None:
+    def update_roles(self, user_id: UUID, roles: frozenset[str]) -> None:
         self.connection.execute(user_roles.delete().where(user_roles.c.user_id == user_id))
         self.connection.execute(
-            user_roles.insert(), [{"user_id": user_id, "role": role.value} for role in roles]
+            user_roles.insert(), [{"user_id": user_id, "role": str(role)} for role in roles]
         )
+
+    def role_definitions(self) -> list[RoleDefinition]:
+        return [
+            RoleDefinition(row.code, row.name, frozenset(row.permissions), row.version)
+            for row in self.connection.execute(select(roles).order_by(roles.c.name))
+        ]
+
+    def save_role(self, definition: RoleDefinition, create: bool) -> None:
+        values = dict(
+            name=definition.name,
+            permissions=sorted(definition.permissions),
+            version=definition.version,
+        )
+        if create:
+            self.connection.execute(roles.insert().values(code=definition.code, **values))
+        else:
+            self.connection.execute(
+                roles.update().where(roles.c.code == definition.code).values(**values)
+            )
+
+    def revoke_role_sessions(self, code: str, now: datetime) -> None:
+        self.connection.execute(
+            sessions.update()
+            .where(
+                sessions.c.user_id.in_(
+                    select(user_roles.c.user_id).where(user_roles.c.role == code)
+                ),
+                sessions.c.revoked_at.is_(None),
+            )
+            .values(revoked_at=now)
+        )
+
+    def list_users(self, offset: int, limit: int) -> list[User]:
+        rows = (
+            self.connection.execute(
+                select(users).order_by(users.c.name, users.c.id).offset(offset).limit(limit)
+            )
+            .mappings()
+            .all()
+        )
+        return [user for row in rows if (user := self._user(row)) is not None]
 
     def update_password_hash(self, user_id: UUID, hashed: str) -> None:
         self.connection.execute(

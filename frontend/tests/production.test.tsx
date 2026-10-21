@@ -148,7 +148,7 @@ it("выпуск требует подтверждения и целого вы�
   await userEvent.type(screen.getByLabelText("Фактический расход"), "0,75");
   await userEvent.type(screen.getByLabelText("Обозначение партии"), "Утро");
   await userEvent.type(screen.getByLabelText("Фактический выход"), "10");
-  const expiry = screen.getByLabelText("Годна до (Алматы)");
+  const expiry = screen.getByLabelText("Годна до (Астана)");
   await userEvent.type(expiry, "2098-01-01T12:00");
   await userEvent.click(
     screen.getByRole("button", { name: "Подтвердить выпуск" }),

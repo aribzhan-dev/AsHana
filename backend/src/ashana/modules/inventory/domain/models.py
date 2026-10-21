@@ -58,13 +58,18 @@ class Item:
     name: str
     kind: str
     unit: str
+    barcode: str | None = None
 
     @classmethod
-    def new(cls, name: str, kind: str, unit: str) -> "Item":
+    def new(cls, name: str, kind: str, unit: str, barcode: str | None = None) -> "Item":
         allowed = {"raw": {"kg", "l"}, "purchased": {"pcs"}, "prepared": {"pcs", "portion"}}
         if kind not in allowed or unit not in allowed[kind]:
             raise invalid("unit", "Выберите единицу, подходящую типу позиции")
-        return cls(uuid4(), text_value(name, "name", 100), kind, unit)
+        if barcode is not None:
+            barcode = barcode.strip() or None
+        if barcode and (kind != "purchased" or not re.fullmatch(r"[0-9]{8,14}", barcode)):
+            raise invalid("barcode", "Штрихкод покупного товара: от 8 до 14 цифр")
+        return cls(uuid4(), text_value(name, "name", 100), kind, unit, barcode)
 
 
 @dataclass(frozen=True)
@@ -85,6 +90,7 @@ class Batch:
     unit: str = "kg"
     item_name: str = ""
     item_kind: str = "raw"
+    warehouse_id: UUID = UUID("00000000-0000-0000-0000-000000000001")
 
     @property
     def free(self) -> Decimal:
@@ -135,3 +141,39 @@ class Movement:
 class Result:
     subject_id: UUID
     version: int
+
+
+@dataclass(frozen=True)
+class DirectoryEntry:
+    id: UUID
+    kind: str
+    name: str
+
+
+@dataclass(frozen=True)
+class InvoiceLine:
+    item_id: UUID
+    quantity: str
+    unit: str
+    unit_cost_minor: int
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
+class Invoice:
+    id: UUID
+    number: str
+    supplier_id: UUID
+    warehouse_id: UUID
+    payment_method_id: UUID
+    received_at: datetime
+    goods_minor: int
+    expenses_minor: int
+    total_minor: int
+    note: str
+    actor_id: UUID
+    created_at: datetime
+    lines: list[dict[str, object]]
+    supplier_name: str = ""
+    warehouse_name: str = ""
+    payment_method_name: str = ""

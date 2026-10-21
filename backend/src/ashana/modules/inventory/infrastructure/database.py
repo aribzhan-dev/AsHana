@@ -23,11 +23,20 @@ from sqlalchemy import (
     text,
     true,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import IntegrityError
 
 from ashana.modules.inventory.application.ports import InventoryRepository
-from ashana.modules.inventory.domain.models import Batch, InventoryError, Item, Movement, Result
+from ashana.modules.inventory.domain.models import (
+    Batch,
+    DirectoryEntry,
+    InventoryError,
+    Invoice,
+    Item,
+    Movement,
+    Result,
+)
 
 metadata = MetaData()
 # Reference-only table: the identity migration owns its definition.
@@ -38,6 +47,7 @@ items = Table(
     Column("id", Uuid, primary_key=True),
     Column("name", String(100), nullable=False),
     Column("name_key", String(200), nullable=False, unique=True),
+    Column("barcode", String(14), unique=True),
     Column("kind", String(20), nullable=False),
     Column("unit", String(10), nullable=False),
     CheckConstraint(
@@ -53,6 +63,7 @@ batches = Table(
     "inventory_batches",
     metadata,
     Column("id", Uuid, primary_key=True),
+    Column("warehouse_id", Uuid, nullable=False),
     Column("item_id", Uuid, nullable=False),
     Column("unit", String(10), nullable=False),
     Column("label", String(100), nullable=False),
@@ -105,7 +116,7 @@ movements = Table(
     ),
     CheckConstraint(
         "action IN ('receipt','write_off','count','suspend','resume',"
-        "'production_consume','production_output','mock_fulfil')",
+        "'production_consume','production_output','mock_fulfil','mock_pos_sale')",
         name="ck_inventory_movement_action",
     ),
 )
@@ -131,13 +142,80 @@ requests = Table(
 )
 
 
+directories = Table(
+    "inventory_directories",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("kind", String(20), nullable=False),
+    Column("name", String(100), nullable=False),
+    Column("name_key", String(200), nullable=False),
+)
+invoices = Table(
+    "inventory_invoices",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("number", String(100), nullable=False),
+    Column("supplier_id", Uuid, nullable=False),
+    Column("warehouse_id", Uuid, nullable=False),
+    Column("payment_method_id", Uuid, nullable=False),
+    Column("received_at", DateTime(timezone=True), nullable=False),
+    Column("goods_minor", BigInteger, nullable=False),
+    Column("expenses_minor", BigInteger, nullable=False),
+    Column("total_minor", BigInteger, nullable=False),
+    Column("note", String(200), nullable=False),
+    Column("actor_id", Uuid, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("lines", JSONB, nullable=False),
+    Column("supplier_name", String(100), nullable=False),
+    Column("warehouse_name", String(100), nullable=False),
+    Column("payment_method_name", String(100), nullable=False),
+)
+
+
 class PostgresInventoryRepository:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
 
+    def directories(self, kind: str) -> list[DirectoryEntry]:
+        return [
+            DirectoryEntry(row.id, row.kind, row.name)
+            for row in self.connection.execute(
+                select(directories)
+                .where(directories.c.kind == kind)
+                .order_by(directories.c.name, directories.c.id)
+            )
+        ]
+
+    def add_directory(self, entry: DirectoryEntry) -> None:
+        try:
+            self.connection.execute(
+                directories.insert().values(**asdict(entry), name_key=entry.name.casefold())
+            )
+        except IntegrityError:
+            raise InventoryError("DIRECTORY_EXISTS", "Такое название уже существует") from None
+
+    def invoices(self, offset: int, limit: int) -> list[Invoice]:
+        return [
+            Invoice(**row)
+            for row in self.connection.execute(
+                select(invoices)
+                .order_by(invoices.c.created_at.desc(), invoices.c.id)
+                .offset(offset)
+                .limit(limit)
+            ).mappings()
+        ]
+
+    def add_invoice(self, invoice: Invoice) -> None:
+        try:
+            self.connection.execute(invoices.insert().values(**asdict(invoice)))
+        except IntegrityError:
+            raise InventoryError(
+                "INVOICE_EXISTS", "Накладная этого поставщика с таким номером уже проведена"
+            ) from None
+
     def items(self, offset: int, limit: int, *, kind: str | None = None) -> list[Item]:
         rows = self.connection.execute(
-            select(items.c.id, items.c.name, items.c.kind, items.c.unit)
+            select(items.c.id, items.c.name, items.c.kind, items.c.unit, items.c.barcode)
             .where(items.c.kind == kind if kind else true())
             .order_by(items.c.name, items.c.id)
             .offset(offset)
@@ -145,17 +223,22 @@ class PostgresInventoryRepository:
         ).mappings()
         return [Item(**row) for row in rows]
 
-    def item(self, item_id: UUID) -> Item | None:
-        row = (
-            self.connection.execute(
-                select(items.c.id, items.c.name, items.c.kind, items.c.unit).where(
-                    items.c.id == item_id
-                )
-            )
-            .mappings()
-            .first()
+    def item(self, item_id: UUID, *, lock: bool = False) -> Item | None:
+        query = select(items.c.id, items.c.name, items.c.kind, items.c.unit, items.c.barcode).where(
+            items.c.id == item_id
         )
+        row = self.connection.execute(query.with_for_update() if lock else query).mappings().first()
         return Item(**row) if row else None
+
+    def update_barcode(self, item_id: UUID, barcode: str | None) -> None:
+        try:
+            self.connection.execute(
+                items.update().where(items.c.id == item_id).values(barcode=barcode)
+            )
+        except IntegrityError:
+            raise InventoryError(
+                "ITEM_EXISTS", "Штрихкод уже используется другим товаром"
+            ) from None
 
     def add_item(self, item: Item) -> None:
         try:
@@ -165,15 +248,31 @@ class PostgresInventoryRepository:
         except IntegrityError:
             raise InventoryError(
                 "ITEM_EXISTS",
-                "Позиция с таким названием уже существует",
+                "Название или штрихкод уже используются",
                 {"name": ["Название уже используется"]},
             ) from None
 
-    def batches(self, offset: int, limit: int, *, item_id: UUID | None = None) -> list[Batch]:
+    def batches(
+        self,
+        offset: int,
+        limit: int,
+        *,
+        item_id: UUID | None = None,
+        ready_only: bool = False,
+        warehouse_id: UUID | None = None,
+        query: str = "",
+    ) -> list[Batch]:
         rows = self.connection.execute(
             select(batches, items.c.name.label("item_name"), items.c.kind.label("item_kind"))
             .join(items)
             .where(batches.c.item_id == item_id if item_id else true())
+            .where(items.c.kind.in_(("prepared", "purchased")) if ready_only else true())
+            .where(batches.c.warehouse_id == warehouse_id if warehouse_id else true())
+            .where(
+                items.c.name.ilike("%" + query.replace("%", "\\%").replace("_", "\\_") + "%")
+                if query
+                else true()
+            )
             .order_by(batches.c.created_at.desc(), batches.c.id)
             .offset(offset)
             .limit(limit)

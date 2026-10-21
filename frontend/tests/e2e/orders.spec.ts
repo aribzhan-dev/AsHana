@@ -23,7 +23,7 @@ test("оплата предшествует заказу; гость, кухня
   }
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "В корзину" }).click();
-  const slot = page.getByLabel("Время получения (Алматы)");
+  const slot = page.getByLabel("Время получения (Астана)");
   await expect(slot).toBeEnabled();
   await expect(slot.locator("option")).toHaveCount(2);
   await slot.selectOption({ index: 1 });
@@ -49,7 +49,7 @@ test("оплата предшествует заказу; гость, кухня
     .fill(process.env.ASHANA_TEST_PASSWORD!);
   await staff.getByRole("button", { name: "Войти", exact: true }).click();
   await expect(
-    staff.getByRole("heading", { name: "Заказы", exact: true }),
+    staff.getByRole("heading", { name: "Входящие заказы", exact: true }),
   ).toBeVisible();
   const staffCard = staff.locator(".order-card").filter({
     has: staff.getByRole("heading", {
@@ -58,13 +58,20 @@ test("оплата предшествует заказу; гость, кухня
     }),
   });
   await expect(staffCard).toHaveCount(0);
-  await draft.getByRole("button", { name: "Тестовая оплата: отказ" }).click();
-  await expect(draft).toContainText("Тестовая оплата отклонена");
+  await page.route(
+    "**/mock-payment",
+    async (route) => {
+      await route.continue({ postData: JSON.stringify({ outcome: "failed" }) });
+    },
+    { times: 1 },
+  );
+  await draft.getByRole("button", { name: "Оплатить заказ" }).click();
+  await expect(draft).toContainText("Оплата не подтверждена");
   expect(await (await page.request.get("/api/v1/orders")).json()).toEqual([]);
-  await draft.getByRole("button", { name: "Тестовая оплата: успешно" }).click();
+  await draft.getByRole("button", { name: "Оплатить заказ" }).click();
   await expect(draft).toContainText("Принят");
   await expect(
-    draft.getByRole("button", { name: "Тестовая оплата: успешно" }),
+    draft.getByRole("button", { name: "Оплатить заказ" }),
   ).toHaveCount(0);
   await staff.getByRole("button", { name: "Обновить заказы" }).click();
   await expect(staffCard).toContainText("Принят");
@@ -97,7 +104,7 @@ test("оплата предшествует заказу; гость, кухня
       .last(),
   ).toContainText("Отменён");
   await staff.getByRole("button", { name: "Обновить заказы" }).click();
-  await expect(staffCard).toContainText("Отменён");
+  await expect(staffCard).toHaveCount(0);
   const other = await browser.newContext({
     baseURL: testInfo.project.use.baseURL,
   });

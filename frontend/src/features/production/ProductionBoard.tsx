@@ -1,3 +1,5 @@
+import { DetailsButton } from "../../shared/ui/DetailsButton";
+import { displayText } from "../../shared/lib/display-text";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../shared/api/http";
 import {
@@ -54,7 +56,7 @@ export function RecipeDetails({ recipe }: { recipe: Recipe }) {
           ))}
         </ul>
       </div>
-      <p>{recipe.instructions}</p>
+      <p>{displayText(recipe.instructions)}</p>
       <p className="field-hint">{stockDate(recipe.created_at)}</p>
     </div>
   );
@@ -191,7 +193,14 @@ export function ProductionBoard({ onExpired }: { onExpired: () => void }) {
                         {s.version} {recipe.version}
                       </Badge>
                     </div>
-                    <RecipeDetails recipe={recipe} />
+                    <p className="muted">
+                      Выход:{" "}
+                      {yieldLabel(recipe.expected_yield, recipe.output_unit)} ·
+                      Ингредиентов: {recipe.lines.length}
+                    </p>
+                    <DetailsButton title={recipe.output_name}>
+                      <RecipeDetails recipe={recipe} />
+                    </DetailsButton>
                     <div className="button-row">
                       <Button
                         onClick={() => setEditor({ kind: "produce", recipe })}
@@ -217,52 +226,58 @@ export function ProductionBoard({ onExpired }: { onExpired: () => void }) {
                         {s.version} {p.recipe_version}
                       </Badge>
                     </div>
-                    <h3>{p.label}</h3>
-                    <p>{stockDate(p.created_at)}</p>
-                    <div className="production-facts">
-                      <div>
-                        <span>{t.actual}</span>
-                        <strong>
-                          {yieldLabel(p.actual_yield, p.output_unit)}
-                        </strong>
-                      </div>
-                      <div>
-                        <span>{s.expires}</span>
-                        <strong>{stockDate(p.expires_at)}</strong>
-                      </div>
-                    </div>
-                    <h3>{t.consumption}</h3>
-                    <ul className="production-lines">
-                      {p.consumption.map((c) => (
-                        <li key={c.batch_id}>
-                          <span>
-                            {c.item_name}
-                            <small>{c.batch_label}</small>
-                          </span>
+                    <p className="muted">
+                      {stockDate(p.created_at)} ·{" "}
+                      {yieldLabel(p.actual_yield, p.output_unit)}
+                    </p>
+                    <DetailsButton title={p.output_name}>
+                      <h3>{displayText(p.label)}</h3>
+                      <p>{stockDate(p.created_at)}</p>
+                      <div className="production-facts">
+                        <div>
+                          <span>{t.actual}</span>
                           <strong>
-                            {stockNumber(c.quantity)}{" "}
-                            {s.units[c.unit as "kg" | "l"]}
+                            {yieldLabel(p.actual_yield, p.output_unit)}
                           </strong>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setDetail(null);
-                        setDetailError("");
-                        setDetailId(p.recipe_id);
-                      }}
-                    >
-                      {t.readRecipe}
-                    </Button>
-                    <details className="field-hint">
-                      <summary>{s.author}</summary>
-                      <p>{p.actor_id}</p>
-                      <p>
-                        {s.label}: {p.id}
-                      </p>
-                    </details>
+                        </div>
+                        <div>
+                          <span>{s.expires}</span>
+                          <strong>{stockDate(p.expires_at)}</strong>
+                        </div>
+                      </div>
+                      <h3>{t.consumption}</h3>
+                      <ul className="production-lines">
+                        {p.consumption.map((c) => (
+                          <li key={c.batch_id}>
+                            <span>
+                              {c.item_name}
+                              <small>{displayText(c.batch_label)}</small>
+                            </span>
+                            <strong>
+                              {stockNumber(c.quantity)}{" "}
+                              {s.units[c.unit as "kg" | "l"]}
+                            </strong>
+                          </li>
+                        ))}
+                      </ul>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setDetail(null);
+                          setDetailError("");
+                          setDetailId(p.recipe_id);
+                        }}
+                      >
+                        {t.readRecipe}
+                      </Button>
+                      <details className="field-hint">
+                        <summary>{s.author}</summary>
+                        <p>{p.actor_id}</p>
+                        <p>
+                          {s.label}: {p.id}
+                        </p>
+                      </details>
+                    </DetailsButton>
                   </Card>
                 ))}
           </div>

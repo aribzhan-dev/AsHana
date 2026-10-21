@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   ApiError,
@@ -23,6 +23,7 @@ import { Button } from "../../shared/ui/Button";
 import { Input, PasswordInput, PhoneInput } from "../../shared/ui/Input";
 import { Alert, Card, Toast } from "../../shared/ui/Feedback";
 import { Dialog } from "../../shared/ui/Dialog";
+import { RoleManager } from "./RoleManager";
 import { RoleFields } from "./RoleFields";
 
 type AuthProps = { onExpired: () => void };
@@ -83,7 +84,9 @@ function CreateStaff({ onExpired }: AuthProps) {
   return (
     <Card>
       <h2>{t.create}</h2>
-      <p className="muted">{t.intro}</p>
+      <p className="muted">
+        Создайте логин и пароль, затем выберите доступ сотрудника.
+      </p>
       <form
         onSubmit={(event) => void submit(event)}
         noValidate
@@ -94,11 +97,27 @@ function CreateStaff({ onExpired }: AuthProps) {
             label={t.name}
             name="name"
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              if (
+                !/^[\p{L}\p{M} '’-]*$/u.test(event.target.value) &&
+                !(event.nativeEvent as InputEvent).isComposing
+              ) {
+                setFields((current) => ({
+                  ...current,
+                  name: "Имя может содержать только буквы, пробел, дефис и апостроф",
+                }));
+                return;
+              }
+              setName(event.target.value);
+              setFields((current) => ({
+                ...current,
+                name: nameError(event.target.value) || "",
+              }));
+            }}
             placeholder={t.namePlaceholder}
             autoComplete="off"
             required
-            maxLength={200}
+            maxLength={100}
             error={fields.name}
           />
           <Input
@@ -310,10 +329,117 @@ export function StaffManagement({
   current,
   onExpired,
 }: AuthProps & { current: Staff }) {
+  const [tab, setTab] = useState("staff");
+  const [members, setMembers] = useState<Staff[]>([]),
+    [error, setError] = useState("");
+  const [selected, setSelected] = useState<Staff | null>(null),
+    [offset, setOffset] = useState(0),
+    [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void identityApi
+      .listStaff(offset)
+      .then((v) => {
+        if (alive) {
+          setMembers(v);
+          setError("");
+        }
+      })
+      .catch((e) => {
+        if (alive) setError(errorMessage(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [offset, attempt]);
   return (
-    <section className="staff-admin" aria-label={t.management}>
-      <CreateStaff onExpired={onExpired} />
-      <FindStaff current={current} onExpired={onExpired} />
-    </section>
+    <div className="form-stack">
+      <div className="stock-tabs">
+        <Button
+          variant={tab === "staff" ? "primary" : "secondary"}
+          onClick={() => setTab("staff")}
+        >
+          Сотрудники
+        </Button>
+        <Button
+          variant={tab === "roles" ? "primary" : "secondary"}
+          onClick={() => setTab("roles")}
+        >
+          Роли и доступ
+        </Button>
+      </div>
+      {tab === "roles" ? (
+        <RoleManager onSaved={() => setAttempt((n) => n + 1)} />
+      ) : (
+        <>
+          <Card>
+            <div className="stock-heading">
+              <h2>Все сотрудники</h2>
+              <Button
+                variant="secondary"
+                onClick={() => setAttempt((n) => n + 1)}
+              >
+                Обновить
+              </Button>
+            </div>
+            {error && <Alert>{error}</Alert>}
+            <div className="staff-directory">
+              {members.map((member) => (
+                <div key={member.id}>
+                  <span>
+                    <strong>{member.name}</strong>
+                    <small>{member.login}</small>
+                  </span>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setSelected(member)}
+                  >
+                    Доступ
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="button-row">
+              <Button
+                variant="secondary"
+                disabled={!offset}
+                onClick={() => setOffset(offset - 100)}
+              >
+                Назад
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={members.length < 100}
+                onClick={() => setOffset(offset + 100)}
+              >
+                Далее
+              </Button>
+            </div>
+          </Card>
+          <section className="staff-admin" aria-label={t.management}>
+            <CreateStaff onExpired={onExpired} />
+            <FindStaff current={current} onExpired={onExpired} />
+          </section>
+        </>
+      )}
+      {selected && (
+        <Dialog
+          open
+          title="Доступ сотрудника"
+          onClose={() => setSelected(null)}
+        >
+          <EditRoles
+            key={selected.id}
+            target={selected}
+            current={current}
+            onUpdated={(user) => {
+              setSelected(user);
+              setAttempt((n) => n + 1);
+            }}
+            onExpired={onExpired}
+          />
+        </Dialog>
+      )}
+    </div>
   );
 }

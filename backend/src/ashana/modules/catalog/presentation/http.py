@@ -41,6 +41,7 @@ class MenuEntryInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     item_id: UUID
     description: str = Field(max_length=1000, strict=True)
+    category: str = Field(default="", max_length=60, strict=True)
     portion_label: str = Field(min_length=1, max_length=100, strict=True)
     price_minor: int = Field(ge=0, le=999999999999, strict=True)
     published: bool = Field(strict=True)
@@ -66,6 +67,7 @@ class MenuEntryResponse(BaseModel):
     name: str
     unit: Literal["pcs", "portion"]
     description: str
+    category: str = ""
     portion_label: str
     price_minor: int
     published: bool
@@ -84,6 +86,7 @@ class PublicMenuEntry(BaseModel):
     name: str
     unit: Literal["pcs", "portion"]
     description: str
+    category: str = ""
     portion_label: str
     price_minor: int
     available: int
@@ -194,6 +197,7 @@ def create_entry(
                 data.portion_label,
                 data.price_minor,
                 data.published,
+                data.category,
             )
         )
     )
@@ -225,6 +229,7 @@ def update_entry(
                 data.portion_label,
                 data.price_minor,
                 data.published,
+                data.category,
             )
         )
     )

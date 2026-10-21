@@ -455,3 +455,39 @@ def test_catalog_pagination_filters_before_limit_and_database_constraints(catalo
         catalog.token, uuid4(), "Сок для меню браузера", "purchased", "pcs"
     )
     catalog.receive(browser_item, "8")
+
+
+def test_category_saved_published_and_replayed(catalog: Catalog) -> None:
+    c = catalog
+    period = c.period()
+    item = c.stock.create_item(c.token, uuid4(), "Категорийный напиток", "purchased", "pcs")
+    key = uuid4()
+    result = c.service.save_entry(
+        c.token,
+        key,
+        period.subject_id,
+        None,
+        0,
+        item.subject_id,
+        "",
+        "500 мл",
+        25000,
+        True,
+        "Напитки",
+    )
+    repeated = c.service.save_entry(
+        c.token,
+        key,
+        period.subject_id,
+        None,
+        0,
+        item.subject_id,
+        "",
+        "500 мл",
+        25000,
+        True,
+        "Напитки",
+    )
+    assert result == repeated
+    entries = c.service.entries(c.token, period.subject_id)
+    assert entries[0].category == "Напитки"

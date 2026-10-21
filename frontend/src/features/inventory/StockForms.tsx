@@ -19,8 +19,19 @@ import {
 } from "../../shared/lib/inventory-validation";
 import { useStockMutation } from "./useStockMutation";
 
-type Props = { onExpired: () => void; onSaved: () => void };
-export function ItemForm({ onExpired, onSaved }: Props) {
+type Props = {
+  onExpired: () => void;
+  onSaved: () => void;
+  onCreated?: (id: string, unit: string) => void;
+  receiving?: boolean;
+};
+export function ItemForm({
+  onExpired,
+  onSaved,
+  onCreated,
+  receiving = false,
+}: Props) {
+  const [barcode, setBarcode] = useState("");
   const [name, setName] = useState(""),
     [kind, setKind] = useState<ItemInput["kind"]>("raw"),
     [unit, setUnit] = useState<ItemInput["unit"]>("kg"),
@@ -40,9 +51,20 @@ export function ItemForm({ onExpired, onSaved }: Props) {
       focusInvalid(event.currentTarget);
       return;
     }
-    const data = { name: name.trim(), kind, unit };
-    if (await mutation.run(data, (key) => inventoryApi.createItem(data, key))) {
+    const data = {
+      name: name.trim(),
+      kind,
+      unit,
+      barcode: kind === "purchased" ? barcode || null : null,
+    };
+    if (
+      await mutation.run(data, async (key) => {
+        const result = await inventoryApi.createItem(data, key);
+        onCreated?.(result.subject_id, unit);
+      })
+    ) {
       setName("");
+      setBarcode("");
       setNotice(true);
       onSaved();
     }
@@ -74,12 +96,27 @@ export function ItemForm({ onExpired, onSaved }: Props) {
               setUnit(next === "raw" ? "kg" : "pcs");
             }}
           >
-            {Object.entries(t.kinds).map(([code, label]) => (
-              <option value={code} key={code}>
-                {label}
-              </option>
-            ))}
+            {Object.entries(t.kinds)
+              .filter(([code]) => !receiving || code !== "prepared")
+              .map(([code, label]) => (
+                <option value={code} key={code}>
+                  {label}
+                </option>
+              ))}
           </Select>
+          {kind === "purchased" && (
+            <Input
+              label="Штрихкод"
+              placeholder="8–14 цифр, необязательно"
+              inputMode="numeric"
+              maxLength={14}
+              value={barcode}
+              onChange={(e) =>
+                setBarcode(e.target.value.replace(/[^0-9]/g, ""))
+              }
+              error={mutation.fields.barcode}
+            />
+          )}
           <Select
             label={t.unit}
             value={unit}
