@@ -1,0 +1,19 @@
+from datetime import datetime
+from typing import Protocol
+from uuid import UUID
+
+
+class ReservationRepository(Protocol):
+    def candidates(self, item_ids: list[UUID]) -> list[UUID]: ...
+    def troubled(self, order_ids: list[UUID], now: datetime) -> set[UUID]: ...
+    def allocations(self, order_id: UUID) -> list[tuple[UUID, int]]: ...
+    def reserve(
+        self, order_id: UUID, batch_id: UUID, quantity: int, actor: UUID, now: datetime
+    ) -> None: ...
+    def release(
+        self, order_id: UUID, batch_id: UUID, quantity: int, actor: UUID | None, now: datetime
+    ) -> None: ...
+
+    def consume(
+        self, order_id: UUID, batch_id: UUID, quantity: int, actor: UUID, now: datetime
+    ) -> None: ...

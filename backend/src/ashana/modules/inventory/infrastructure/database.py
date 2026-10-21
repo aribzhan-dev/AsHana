@@ -1,0 +1,304 @@
+import hashlib
+from collections.abc import Callable
+from dataclasses import asdict
+from datetime import datetime
+from types import TracebackType
+from uuid import UUID, uuid4
+
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    MetaData,
+    Numeric,
+    String,
+    Table,
+    UniqueConstraint,
+    Uuid,
+    select,
+    text,
+    true,
+)
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.exc import IntegrityError
+
+from ashana.modules.inventory.application.ports import InventoryRepository
+from ashana.modules.inventory.domain.models import Batch, InventoryError, Item, Movement, Result
+
+metadata = MetaData()
+# Reference-only table: the identity migration owns its definition.
+Table("identity_users", metadata, Column("id", Uuid, primary_key=True))
+items = Table(
+    "inventory_items",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("name", String(100), nullable=False),
+    Column("name_key", String(200), nullable=False, unique=True),
+    Column("kind", String(20), nullable=False),
+    Column("unit", String(10), nullable=False),
+    CheckConstraint(
+        "(kind='raw' AND unit IN ('kg','l')) "
+        "OR (kind='purchased' AND unit='pcs') "
+        "OR (kind='prepared' AND unit IN ('pcs','portion'))",
+        name="ck_inventory_item_unit",
+    ),
+    CheckConstraint("char_length(name) BETWEEN 1 AND 100", name="ck_inventory_item_name"),
+    UniqueConstraint("id", "unit", name="uq_inventory_item_unit"),
+)
+batches = Table(
+    "inventory_batches",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("item_id", Uuid, nullable=False),
+    Column("unit", String(10), nullable=False),
+    Column("label", String(100), nullable=False),
+    Column("on_hand", Numeric(18, 6), nullable=False),
+    Column("reserved", Numeric(18, 6), nullable=False),
+    Column("status", String(20), nullable=False),
+    Column("version", Integer, nullable=False),
+    Column("total_cost_minor", BigInteger, nullable=False),
+    Column("received_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("source", String(200), nullable=False),
+    Column("actor_id", Uuid, ForeignKey("identity_users.id"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    ForeignKeyConstraint(["item_id", "unit"], ["inventory_items.id", "inventory_items.unit"]),
+    CheckConstraint(
+        "on_hand >= reserved AND reserved >= 0 AND on_hand <= 999999999", name="ck_inventory_stock"
+    ),
+    CheckConstraint(
+        "unit NOT IN ('pcs','portion') OR (on_hand=trunc(on_hand) AND reserved=trunc(reserved))",
+        name="ck_inventory_whole_goods",
+    ),
+    CheckConstraint(
+        "status IN ('active','suspended','written_off') AND (status != 'written_off' OR on_hand=0)",
+        name="ck_inventory_state",
+    ),
+    CheckConstraint(
+        "version > 0 AND total_cost_minor BETWEEN 0 AND 999999999999", name="ck_inventory_values"
+    ),
+    CheckConstraint("expires_at > received_at", name="ck_inventory_expiry"),
+)
+movements = Table(
+    "inventory_movements",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("batch_id", Uuid, ForeignKey("inventory_batches.id"), nullable=False, index=True),
+    Column("action", String(20), nullable=False),
+    Column("delta", Numeric(18, 6), nullable=False),
+    Column("before", Numeric(18, 6), nullable=False),
+    Column("after", Numeric(18, 6), nullable=False),
+    Column("reason", String(200), nullable=False),
+    Column("actor_id", Uuid, ForeignKey("identity_users.id"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("version", Integer, nullable=False),
+    Column("status_before", String(20), nullable=False),
+    Column("status_after", String(20), nullable=False),
+    UniqueConstraint("batch_id", "version", name="uq_inventory_movement_version"),
+    CheckConstraint(
+        '"before" + delta = "after" AND "before" >= 0 AND "after" >= 0',
+        name="ck_inventory_movement_balance",
+    ),
+    CheckConstraint(
+        "action IN ('receipt','write_off','count','suspend','resume',"
+        "'production_consume','production_output','mock_fulfil')",
+        name="ck_inventory_movement_action",
+    ),
+)
+audit = Table(
+    "inventory_audit",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("actor_id", Uuid, ForeignKey("identity_users.id"), nullable=False),
+    Column("action", String(30), nullable=False),
+    Column("subject_id", Uuid, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+requests = Table(
+    "inventory_requests",
+    metadata,
+    Column("actor_id", Uuid, ForeignKey("identity_users.id"), primary_key=True),
+    Column("operation", String(30), primary_key=True),
+    Column("key", Uuid, primary_key=True),
+    Column("fingerprint", String(64), nullable=False),
+    Column("subject_id", Uuid, nullable=False),
+    Column("version", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+
+class PostgresInventoryRepository:
+    def __init__(self, connection: Connection) -> None:
+        self.connection = connection
+
+    def items(self, offset: int, limit: int, *, kind: str | None = None) -> list[Item]:
+        rows = self.connection.execute(
+            select(items.c.id, items.c.name, items.c.kind, items.c.unit)
+            .where(items.c.kind == kind if kind else true())
+            .order_by(items.c.name, items.c.id)
+            .offset(offset)
+            .limit(limit)
+        ).mappings()
+        return [Item(**row) for row in rows]
+
+    def item(self, item_id: UUID) -> Item | None:
+        row = (
+            self.connection.execute(
+                select(items.c.id, items.c.name, items.c.kind, items.c.unit).where(
+                    items.c.id == item_id
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return Item(**row) if row else None
+
+    def add_item(self, item: Item) -> None:
+        try:
+            self.connection.execute(
+                items.insert().values(**asdict(item), name_key=item.name.casefold())
+            )
+        except IntegrityError:
+            raise InventoryError(
+                "ITEM_EXISTS",
+                "Позиция с таким названием уже существует",
+                {"name": ["Название уже используется"]},
+            ) from None
+
+    def batches(self, offset: int, limit: int, *, item_id: UUID | None = None) -> list[Batch]:
+        rows = self.connection.execute(
+            select(batches, items.c.name.label("item_name"), items.c.kind.label("item_kind"))
+            .join(items)
+            .where(batches.c.item_id == item_id if item_id else true())
+            .order_by(batches.c.created_at.desc(), batches.c.id)
+            .offset(offset)
+            .limit(limit)
+        ).mappings()
+        return [Batch(**row) for row in rows]
+
+    def batch(self, batch_id: UUID, *, lock: bool = False) -> Batch | None:
+        query = (
+            select(batches, items.c.name.label("item_name"), items.c.kind.label("item_kind"))
+            .join(items)
+            .where(batches.c.id == batch_id)
+        )
+        row = (
+            self.connection.execute(query.with_for_update(of=batches) if lock else query)
+            .mappings()
+            .first()
+        )
+        return Batch(**row) if row else None
+
+    def add_batch(self, batch: Batch) -> None:
+        values = asdict(batch)
+        values.pop("item_name")
+        values.pop("item_kind")
+        self.connection.execute(batches.insert().values(**values))
+
+    def save_batch(self, batch: Batch) -> None:
+        self.connection.execute(
+            batches.update()
+            .where(batches.c.id == batch.id)
+            .values(on_hand=batch.on_hand, status=batch.status, version=batch.version)
+        )
+
+    def add_movement(self, movement: Movement) -> None:
+        self.connection.execute(movements.insert().values(**asdict(movement)))
+
+    def movements(self, batch_id: UUID, offset: int, limit: int) -> list[Movement]:
+        rows = self.connection.execute(
+            select(movements)
+            .where(movements.c.batch_id == batch_id)
+            .order_by(movements.c.version.desc())
+            .offset(offset)
+            .limit(limit)
+        ).mappings()
+        return [Movement(**row) for row in rows]
+
+    def replay(self, actor: UUID, operation: str, key: UUID, fingerprint: str) -> Result | None:
+        # Lock only this actor/operation/key, before taking the target batch lock.
+        lock_id = int.from_bytes(
+            hashlib.sha256(f"{actor}:{operation}:{key}".encode()).digest()[:8], signed=True
+        )
+        self.connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
+        row = (
+            self.connection.execute(
+                select(requests).where(
+                    requests.c.actor_id == actor,
+                    requests.c.operation == operation,
+                    requests.c.key == key,
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if not row:
+            return None
+        if row["fingerprint"] != fingerprint:
+            raise InventoryError(
+                "IDEMPOTENCY_CONFLICT", "Этот ключ уже использован с другими данными"
+            )
+        return Result(row["subject_id"], row["version"])
+
+    def remember(
+        self,
+        actor: UUID,
+        operation: str,
+        key: UUID,
+        fingerprint: str,
+        result: Result,
+        now: datetime,
+    ) -> None:
+        self.connection.execute(
+            requests.insert().values(
+                actor_id=actor,
+                operation=operation,
+                key=key,
+                fingerprint=fingerprint,
+                subject_id=result.subject_id,
+                version=result.version,
+                created_at=now,
+            )
+        )
+
+    def audit(self, actor: UUID, action: str, subject: UUID, now: datetime) -> None:
+        self.connection.execute(
+            audit.insert().values(
+                id=uuid4(), actor_id=actor, action=action, subject_id=subject, created_at=now
+            )
+        )
+
+
+class PostgresInventoryUnitOfWork:
+    def __init__(self, engine: Engine, authorize: Callable[[Connection, str], UUID]) -> None:
+        self.engine, self.authorizer = engine, authorize
+
+    def __enter__(self) -> "PostgresInventoryUnitOfWork":
+        self.connection = self.engine.connect()
+        self.transaction = self.connection.begin()
+        self.repository: InventoryRepository = PostgresInventoryRepository(self.connection)
+        return self
+
+    def authorize(self, token: str) -> UUID:
+        # Share the identity role-change lock so revoked roles cannot commit stock changes.
+        self.connection.execute(text("SELECT pg_advisory_xact_lock_shared(71001)"))
+        return self.authorizer(self.connection, token)
+
+    def commit(self) -> None:
+        self.transaction.commit()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        try:
+            if self.transaction.is_active:
+                self.transaction.rollback()
+        finally:
+            self.connection.close()

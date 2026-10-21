@@ -1,0 +1,114 @@
+name: ashana
+
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: infrastructure/docker/backend.Dockerfile
+    target: runtime
+
+x-database-environment: &database-environment
+  ASHANA_DB_HOST: db
+  ASHANA_DB_NAME: ashana
+  ASHANA_DB_PORT: "5432"
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/postgres.Dockerfile
+    environment:
+      POSTGRES_DB: ashana
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Укажите локальный пароль PostgreSQL}
+      ASHANA_MIGRATION_PASSWORD: ${ASHANA_MIGRATION_PASSWORD:?Укажите пароль мигратора}
+      ASHANA_APP_PASSWORD: ${ASHANA_APP_PASSWORD:?Укажите пароль приложения}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d ashana"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *database-environment
+      ASHANA_DB_USER: ashana_migrator
+      ASHANA_DB_PASSWORD: ${ASHANA_MIGRATION_PASSWORD:?Укажите пароль мигратора}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    environment:
+      <<: *database-environment
+      ASHANA_DB_USER: ashana_app
+      ASHANA_DB_PASSWORD: ${ASHANA_APP_PASSWORD:?Укажите пароль приложения}
+      ASHANA_ORDER_CUTOFF_MINUTES: ${ASHANA_ORDER_CUTOFF_MINUTES:-15}
+      ASHANA_ORDER_SLOT_MINUTES: ${ASHANA_ORDER_SLOT_MINUTES:-10}
+      ASHANA_ORDER_SLOT_CAPACITY: ${ASHANA_ORDER_SLOT_CAPACITY:-10}
+      ASHANA_ORDER_MAX_ACTIVE: ${ASHANA_ORDER_MAX_ACTIVE:-2}
+      ASHANA_ORDER_MAX_PORTIONS: ${ASHANA_ORDER_MAX_PORTIONS:-10}
+      ASHANA_ORDER_RESERVATION_SECONDS: ${ASHANA_ORDER_RESERVATION_SECONDS:-300}
+      ASHANA_TELEGRAM_BOT_TOKEN: ${ASHANA_TELEGRAM_BOT_TOKEN:-}
+      ASHANA_TELEGRAM_CHAT_ID: ${ASHANA_TELEGRAM_CHAT_ID:-}
+      ASHANA_ENVIRONMENT: local
+      ASHANA_DEMO_IDENTITY: "true"
+      ASHANA_COOKIE_SECURE: "false"
+      ASHANA_ALLOWED_ORIGINS: '["http://127.0.0.1:${ASHANA_WEB_PORT:-8080}","http://localhost:${ASHANA_WEB_PORT:-8080}","http://127.0.0.1:5173","http://localhost:5173"]'
+    ports:
+      - "127.0.0.1:${ASHANA_API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  test:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/backend.Dockerfile
+      target: test
+    environment:
+      <<: *database-environment
+      ASHANA_DB_USER: ashana_app
+      ASHANA_DB_PASSWORD: ${ASHANA_APP_PASSWORD:?Укажите пароль приложения}
+      ASHANA_ENVIRONMENT: test
+      ASHANA_DEMO_IDENTITY: "true"
+      ASHANA_COOKIE_SECURE: "false"
+      ASHANA_ALLOWED_ORIGINS: '["http://127.0.0.1:18081"]'
+      ASHANA_RUN_INTEGRATION: "1"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/frontend.Dockerfile
+    ports:
+      - "127.0.0.1:${ASHANA_WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

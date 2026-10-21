@@ -1,0 +1,253 @@
+import hashlib
+import secrets
+from datetime import datetime
+from typing import Annotated, cast
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
+
+from ashana.bootstrap.errors import ErrorResponse
+from ashana.bootstrap.settings import Settings
+from ashana.modules.identity.application.service import IdentityService
+from ashana.modules.identity.domain.models import IdentityError, Role, User, permissions_for
+
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["Сотрудники"],
+    responses={status: {"model": ErrorResponse} for status in (401, 403, 404, 409, 422, 429)},
+)
+
+
+def settings_for(request: Request) -> Settings:
+    return cast(Settings, request.app.state.settings)
+
+
+def service_for(request: Request) -> IdentityService:
+    return cast(IdentityService, request.app.state.identity)
+
+
+Service = Annotated[IdentityService, Depends(service_for)]
+
+
+def session_token(request: Request) -> str:
+    return request.cookies.get(settings_for(request).session_cookie, "")[:256]
+
+
+def csrf_for_session(token: str) -> str:
+    # Domain separation keeps the CSRF token distinct from the HttpOnly bearer credential.
+    return hashlib.sha256(f"ashana-csrf:{token}".encode()).hexdigest()
+
+
+def enforce_csrf(request: Request) -> None:
+    settings = settings_for(request)
+    if request.headers.get("origin") not in settings.allowed_origins:
+        raise IdentityError("CSRF_FAILED", "Обновите страницу и повторите действие")
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        raise IdentityError("CSRF_FAILED", "Обновите страницу и повторите действие")
+    token = session_token(request)
+    expected = csrf_for_session(token) if token else request.cookies.get(settings.csrf_cookie, "")
+    supplied = request.headers.get("x-csrf-token", "")
+    if (
+        not expected
+        or not supplied
+        or len(supplied) > 128
+        or not secrets.compare_digest(expected, supplied)
+    ):
+        raise IdentityError("CSRF_FAILED", "Обновите страницу и повторите действие")
+
+
+def clear_cookies(request: Request, response: Response) -> None:
+    settings = settings_for(request)
+    for name in (settings.session_cookie, settings.csrf_cookie):
+        response.delete_cookie(
+            name, path="/", secure=settings.cookie_secure, httponly=True, samesite="lax"
+        )
+
+
+class InputModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True, strict=True)
+
+
+class LoginInput(InputModel):
+    login: str = Field(min_length=1, max_length=64)
+    password: SecretStr = Field(min_length=1, max_length=128)
+
+
+class StaffInput(LoginInput):
+    phone: str | None = Field(default=None, max_length=32)
+    name: str = Field(min_length=1, max_length=100)
+    roles: list[str] = Field(min_length=1, max_length=5)
+
+
+class RolesInput(InputModel):
+    roles: list[str] = Field(min_length=1, max_length=5)
+
+
+class SearchInput(InputModel):
+    login: str = Field(min_length=1, max_length=64)
+
+
+def parse_roles(values: list[str]) -> frozenset[Role]:
+    try:
+        return frozenset(Role(value) for value in values)
+    except ValueError:
+        raise IdentityError(
+            "VALIDATION_ERROR", "Выберите допустимые роли", {"roles": ["Выберите допустимые роли"]}
+        ) from None
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    login: str
+    phone: str | None
+    name: str
+    roles: list[Role]
+    permissions: list[str]
+    is_demo: bool
+
+    @classmethod
+    def from_user(cls, user: User) -> "UserResponse":
+        return cls(
+            id=user.id,
+            login=user.login,
+            phone=user.phone,
+            name=user.name,
+            roles=sorted(user.roles),
+            permissions=sorted(permissions_for(user.roles)),
+            is_demo=user.is_demo,
+        )
+
+
+class CsrfResponse(BaseModel):
+    csrf_token: str
+
+
+class SessionResponse(BaseModel):
+    id: UUID
+    created_at: datetime
+    expires_at: datetime
+    current: bool
+
+
+@router.get("/auth/csrf", operation_id="getCsrfToken")
+def csrf(request: Request, response: Response) -> CsrfResponse:
+    settings = settings_for(request)
+    token = session_token(request)
+    if token:
+        return CsrfResponse(csrf_token=csrf_for_session(token))
+    csrf_token = request.cookies.get(settings.csrf_cookie, "")
+    if not 32 <= len(csrf_token) <= 128:
+        csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        settings.csrf_cookie,
+        csrf_token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+        max_age=3600,
+    )
+    return CsrfResponse(csrf_token=csrf_token)
+
+
+@router.post("/auth/login", operation_id="loginStaff", dependencies=[Depends(enforce_csrf)])
+def login(data: LoginInput, request: Request, response: Response, service: Service) -> UserResponse:
+    settings = settings_for(request)
+    user, token = service.login(
+        data.login,
+        data.password.get_secret_value(),
+        request.client.host if request.client else "unknown",
+        session_token(request),
+    )
+    response.set_cookie(
+        settings.session_cookie,
+        token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+        max_age=settings.session_seconds,
+    )
+    return UserResponse.from_user(user)
+
+
+@router.get("/auth/me", operation_id="getCurrentStaff")
+def me(request: Request, service: Service) -> UserResponse:
+    return UserResponse.from_user(service.authenticate(session_token(request)).user)
+
+
+@router.post(
+    "/auth/logout",
+    operation_id="logoutStaff",
+    status_code=204,
+    dependencies=[Depends(enforce_csrf)],
+)
+def logout(request: Request, response: Response, service: Service) -> None:
+    service.logout(session_token(request))
+    clear_cookies(request, response)
+
+
+@router.get("/auth/sessions", operation_id="listOwnSessions")
+def list_sessions(request: Request, service: Service) -> list[SessionResponse]:
+    principal, sessions = service.sessions(session_token(request))
+    return [
+        SessionResponse(
+            id=session.id,
+            created_at=session.created_at,
+            expires_at=session.expires_at,
+            current=session.id == principal.session.id,
+        )
+        for session in sessions
+    ]
+
+
+@router.delete(
+    "/auth/sessions/{session_id}",
+    operation_id="revokeOwnSession",
+    status_code=204,
+    dependencies=[Depends(enforce_csrf)],
+)
+def revoke_session(
+    session_id: UUID, request: Request, response: Response, service: Service
+) -> None:
+    current = service.revoke_session(session_token(request), session_id)
+    if current:
+        clear_cookies(request, response)
+
+
+@router.post("/admin/users/search", operation_id="findStaff", dependencies=[Depends(enforce_csrf)])
+def search_staff(data: SearchInput, request: Request, service: Service) -> UserResponse:
+    return UserResponse.from_user(service.find_staff(session_token(request), data.login))
+
+
+@router.post(
+    "/admin/users",
+    operation_id="createStaff",
+    status_code=201,
+    dependencies=[Depends(enforce_csrf)],
+)
+def create_staff(data: StaffInput, request: Request, service: Service) -> UserResponse:
+    return UserResponse.from_user(
+        service.create_staff(
+            session_token(request),
+            data.name,
+            data.login,
+            data.password.get_secret_value(),
+            parse_roles(data.roles),
+            phone=data.phone,
+        )
+    )
+
+
+@router.put(
+    "/admin/users/{user_id}/roles",
+    operation_id="assignStaffRoles",
+    dependencies=[Depends(enforce_csrf)],
+)
+def assign_roles(
+    user_id: UUID, data: RolesInput, request: Request, service: Service
+) -> UserResponse:
+    return UserResponse.from_user(
+        service.assign_roles(session_token(request), user_id, parse_roles(data.roles))
+    )
