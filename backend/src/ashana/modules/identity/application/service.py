@@ -22,6 +22,7 @@ from ashana.modules.identity.domain.models import (
     User,
     normalize_login,
     normalize_name,
+    normalize_nickname,
     validate_password,
 )
 
@@ -172,6 +173,31 @@ class IdentityService:
             self.clock(),
         )
 
+    def set_nickname(
+        self, token: str, user_id: UUID, nickname: str, expected_nickname: str
+    ) -> User:
+        nickname = normalize_nickname(nickname)
+        with self.uow() as uow:
+            principal = self._principal(uow, token)
+            principal.require("identity.manage")
+            user = uow.repository.user_by_id(user_id, lock=True)
+            if not user:
+                raise IdentityError("NOT_FOUND", "Сотрудник не найден")
+            if user.nickname == nickname:
+                return user
+            if user.nickname != expected_nickname:
+                raise IdentityError("CONFLICT", "Никнейм изменился. Обновите список сотрудников")
+            uow.repository.update_nickname(user_id, nickname)
+            uow.repository.audit(
+                "nickname_updated",
+                principal.user.id,
+                user_id,
+                self.clock(),
+                {"nickname": [nickname]},
+            )
+            uow.commit()
+            return replace(user, nickname=nickname)
+
     def create_staff(
         self,
         token: str,
@@ -180,10 +206,14 @@ class IdentityService:
         password: str,
         roles: frozenset[str],
         phone: str | None = None,
+        nickname: str = "",
     ) -> User:
         # Authorize before expensive hashing, then recheck under the role-change lock.
         self.authenticate(token).require("identity.manage")
-        user = self._new_user(name, login, password, roles, phone)
+        user = replace(
+            self._new_user(name, login, password, roles, phone),
+            nickname=normalize_nickname(nickname),
+        )
         with self.uow() as uow:
             uow.repository.lock_role_changes()
             principal = self._principal(uow, token)

@@ -92,6 +92,17 @@ def normalize_name(value: str) -> str:
     return name
 
 
+def normalize_nickname(value: str) -> str:
+    nickname = unicodedata.normalize("NFC", value.strip())
+    if len(nickname) > 100 or any(unicodedata.category(c).startswith("C") for c in value):
+        raise IdentityError(
+            "VALIDATION_ERROR",
+            "Проверьте никнейм",
+            {"nickname": ["До 100 символов без управляющих знаков"]},
+        )
+    return nickname
+
+
 def validate_password(password: str) -> None:
     if not 12 <= len(password) <= 128:
         raise IdentityError(
@@ -113,6 +124,7 @@ class User:
     is_active: bool = True
     is_demo: bool = True
     permissions: frozenset[str] | None = None
+    nickname: str = ""
 
     @property
     def effective_permissions(self) -> frozenset[str]:

@@ -7,7 +7,16 @@ import { inventoryApi } from "../src/shared/api/inventory";
 afterEach(() => vi.restoreAllMocks());
 it("накладная отправляет строки и расходы целиком и закрывается после подтверждения", async () => {
   vi.spyOn(inventoryApi, "items").mockResolvedValue([
-    { id: "rice", name: "Рис", kind: "raw", unit: "kg" },
+    {
+      id: "rice",
+      name: "Рис",
+      kind: "raw",
+      category: "",
+      purchase_price_minor: 0,
+      sale_price_minor: 0,
+      version: 1,
+      unit: "kg",
+    },
   ]);
   vi.spyOn(receivingApi, "invoices").mockResolvedValue([]);
   vi.spyOn(receivingApi, "directories").mockImplementation(async (kind) => [

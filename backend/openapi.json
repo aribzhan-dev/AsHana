@@ -1058,6 +1058,109 @@
         }
       }
     },
+    "/api/v1/admin/users/{user_id}/nickname": {
+      "put": {
+        "tags": [
+          "Сотрудники"
+        ],
+        "summary": "Set Nickname",
+        "operationId": "setStaffNickname",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NicknameInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        }
+      }
+    },
     "/api/v1/catalog/menu": {
       "get": {
         "tags": [
@@ -5071,6 +5174,109 @@
         }
       }
     },
+    "/api/v1/inventory/items/{item_id}": {
+      "put": {
+        "tags": [
+          "Склад"
+        ],
+        "summary": "Update Item",
+        "operationId": "updateStockItem",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
     "/api/v1/production/items": {
       "get": {
         "tags": [
@@ -6584,6 +6790,26 @@
               }
             ],
             "title": "Barcode"
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Category",
+            "default": ""
+          },
+          "purchase_price_minor": {
+            "type": "integer",
+            "maximum": 999999999999.0,
+            "minimum": 0.0,
+            "title": "Purchase Price Minor",
+            "default": 0
+          },
+          "sale_price_minor": {
+            "type": "integer",
+            "maximum": 999999999999.0,
+            "minimum": 0.0,
+            "title": "Sale Price Minor",
+            "default": 0
           }
         },
         "additionalProperties": false,
@@ -6597,6 +6823,11 @@
       },
       "ItemResponse": {
         "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -6636,6 +6867,26 @@
               }
             ],
             "title": "Barcode"
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Category",
+            "default": ""
+          },
+          "purchase_price_minor": {
+            "type": "integer",
+            "maximum": 999999999999.0,
+            "minimum": 0.0,
+            "title": "Purchase Price Minor",
+            "default": 0
+          },
+          "sale_price_minor": {
+            "type": "integer",
+            "maximum": 999999999999.0,
+            "minimum": 0.0,
+            "title": "Sale Price Minor",
+            "default": 0
           }
         },
         "type": "object",
@@ -6646,6 +6897,60 @@
           "unit"
         ],
         "title": "ItemResponse"
+      },
+      "ItemUpdateInput": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 14
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Category",
+            "default": ""
+          },
+          "purchase_price_minor": {
+            "type": "integer",
+            "maximum": 999999999999.0,
+            "minimum": 0.0,
+            "title": "Purchase Price Minor"
+          },
+          "sale_price_minor": {
+            "type": "integer",
+            "maximum": 999999999999.0,
+            "minimum": 0.0,
+            "title": "Sale Price Minor"
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "purchase_price_minor",
+          "sale_price_minor",
+          "expected_version"
+        ],
+        "title": "ItemUpdateInput"
       },
       "KitchenTransition": {
         "properties": {
@@ -6866,6 +7171,11 @@
       },
       "MovementResponse": {
         "properties": {
+          "actor_name": {
+            "type": "string",
+            "title": "Actor Name",
+            "default": ""
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -6935,6 +7245,27 @@
           "status_after"
         ],
         "title": "MovementResponse"
+      },
+      "NicknameInput": {
+        "properties": {
+          "nickname": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Nickname"
+          },
+          "expected_nickname": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Expected Nickname"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nickname",
+          "expected_nickname"
+        ],
+        "title": "NicknameInput"
       },
       "OperationResponse": {
         "properties": {
@@ -7446,6 +7777,11 @@
       },
       "ProductionResponse": {
         "properties": {
+          "actor_name": {
+            "type": "string",
+            "title": "Actor Name",
+            "default": ""
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -8317,6 +8653,12 @@
             "title": "Password",
             "writeOnly": true
           },
+          "nickname": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Nickname",
+            "default": ""
+          },
           "phone": {
             "anyOf": [
               {
@@ -8357,6 +8699,11 @@
       },
       "UserResponse": {
         "properties": {
+          "nickname": {
+            "type": "string",
+            "title": "Nickname",
+            "default": ""
+          },
           "id": {
             "type": "string",
             "format": "uuid",

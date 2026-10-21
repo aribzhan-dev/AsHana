@@ -12,6 +12,7 @@ const user: Staff = {
   phone: null,
   roles: ["manager"],
   is_demo: true,
+  nickname: "",
   permissions: ["reporting.read", "pos.sell"],
 };
 it("обзор показывает точные суммы и нулевые продажи, сессии отсутствуют", async () => {

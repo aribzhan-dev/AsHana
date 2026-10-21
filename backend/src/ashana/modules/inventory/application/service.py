@@ -85,10 +85,21 @@ class InventoryService:
             return result
 
     def create_item(
-        self, token: str, key: UUID, name: str, kind: str, unit: str, barcode: str | None = None
+        self,
+        token: str,
+        key: UUID,
+        name: str,
+        kind: str,
+        unit: str,
+        barcode: str | None = None,
+        category: str = "",
+        purchase_price_minor: int = 0,
+        sale_price_minor: int = 0,
     ) -> Result:
         def action(repo: InventoryRepository, actor: UUID, now: datetime) -> Result:
-            item = Item.new(name, kind, unit, barcode)
+            item = Item.new(
+                name, kind, unit, barcode, category, purchase_price_minor, sale_price_minor
+            )
             repo.add_item(item)
             return Result(item.id, 1)
 
@@ -96,7 +107,21 @@ class InventoryService:
             token,
             "item_created",
             key,
-            {"name": name, "kind": kind, "unit": unit, "barcode": barcode},
+            {
+                "name": name,
+                "kind": kind,
+                "unit": unit,
+                "barcode": barcode,
+                **(
+                    {
+                        "category": category,
+                        "purchase_price_minor": purchase_price_minor,
+                        "sale_price_minor": sale_price_minor,
+                    }
+                    if category or purchase_price_minor or sale_price_minor
+                    else {}
+                ),
+            },
             action,
         )
 
@@ -430,6 +455,56 @@ class InventoryService:
                 expenses_minor=expenses_minor,
                 note=note,
                 lines=[asdict(line) for line in lines],
+            ),
+            action,
+        )
+
+    def edit_item(
+        self,
+        token: str,
+        key: UUID,
+        item_id: UUID,
+        name: str,
+        barcode: str | None,
+        category: str,
+        purchase_price_minor: int,
+        sale_price_minor: int,
+        expected_version: int,
+    ) -> Result:
+        def action(repo: InventoryRepository, actor: UUID, now: datetime) -> Result:
+            item = repo.item(item_id, lock=True)
+            if not item:
+                raise InventoryError("NOT_FOUND", "Товар не найден")
+            if item.version != expected_version:
+                raise InventoryError(
+                    "STALE_ITEM", "Товар изменился. Обновите список перед редактированием"
+                )
+            updated = Item.new(
+                name,
+                item.kind,
+                item.unit,
+                barcode,
+                category,
+                purchase_price_minor,
+                sale_price_minor,
+            )
+
+            updated = replace(updated, id=item.id, version=item.version + 1)
+            repo.update_item(updated)
+            return Result(item.id, updated.version)
+
+        return self._write(
+            token,
+            "item_updated",
+            key,
+            dict(
+                item_id=item_id,
+                name=name,
+                barcode=barcode,
+                category=category,
+                purchase_price_minor=purchase_price_minor,
+                sale_price_minor=sale_price_minor,
+                expected_version=expected_version,
             ),
             action,
         )

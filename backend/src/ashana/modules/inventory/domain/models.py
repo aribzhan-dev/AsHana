@@ -59,9 +59,22 @@ class Item:
     kind: str
     unit: str
     barcode: str | None = None
+    category: str = ""
+    purchase_price_minor: int = 0
+    sale_price_minor: int = 0
+    version: int = 1
 
     @classmethod
-    def new(cls, name: str, kind: str, unit: str, barcode: str | None = None) -> "Item":
+    def new(
+        cls,
+        name: str,
+        kind: str,
+        unit: str,
+        barcode: str | None = None,
+        category: str = "",
+        purchase_price_minor: int = 0,
+        sale_price_minor: int = 0,
+    ) -> "Item":
         allowed = {"raw": {"kg", "l"}, "purchased": {"pcs"}, "prepared": {"pcs", "portion"}}
         if kind not in allowed or unit not in allowed[kind]:
             raise invalid("unit", "Выберите единицу, подходящую типу позиции")
@@ -69,7 +82,23 @@ class Item:
             barcode = barcode.strip() or None
         if barcode and (kind != "purchased" or not re.fullmatch(r"[0-9]{8,14}", barcode)):
             raise invalid("barcode", "Штрихкод покупного товара: от 8 до 14 цифр")
-        return cls(uuid4(), text_value(name, "name", 100), kind, unit, barcode)
+        category = text_value(category, "category", 100) if category.strip() else ""
+        for field, price in (
+            ("purchase_price_minor", purchase_price_minor),
+            ("sale_price_minor", sale_price_minor),
+        ):
+            if type(price) is not int or not 0 <= price <= 999999999999:
+                raise invalid(field, "Цена должна быть от 0 до 9999999999,99 ₸")
+        return cls(
+            uuid4(),
+            text_value(name, "name", 100),
+            kind,
+            unit,
+            barcode,
+            category,
+            purchase_price_minor,
+            sale_price_minor,
+        )
 
 
 @dataclass(frozen=True)
@@ -135,6 +164,7 @@ class Movement:
     version: int
     status_before: str
     status_after: str
+    actor_name: str = ""
 
 
 @dataclass(frozen=True)

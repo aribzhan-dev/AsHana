@@ -176,6 +176,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/users/{user_id}/nickname": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Nickname */
+        put: operations["setStaffNickname"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalog/menu": {
         parameters: {
             query?: never;
@@ -761,6 +778,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Item */
+        put: operations["updateStockItem"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/production/items": {
         parameters: {
             query?: never;
@@ -1247,9 +1281,29 @@ export interface components {
             unit: "kg" | "l" | "pcs" | "portion";
             /** Barcode */
             barcode?: string | null;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /**
+             * Purchase Price Minor
+             * @default 0
+             */
+            purchase_price_minor: number;
+            /**
+             * Sale Price Minor
+             * @default 0
+             */
+            sale_price_minor: number;
         };
         /** ItemResponse */
         ItemResponse: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
             /**
              * Id
              * Format: uuid
@@ -1269,6 +1323,39 @@ export interface components {
             unit: "kg" | "l" | "pcs" | "portion";
             /** Barcode */
             barcode?: string | null;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /**
+             * Purchase Price Minor
+             * @default 0
+             */
+            purchase_price_minor: number;
+            /**
+             * Sale Price Minor
+             * @default 0
+             */
+            sale_price_minor: number;
+        };
+        /** ItemUpdateInput */
+        ItemUpdateInput: {
+            /** Name */
+            name: string;
+            /** Barcode */
+            barcode?: string | null;
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /** Purchase Price Minor */
+            purchase_price_minor: number;
+            /** Sale Price Minor */
+            sale_price_minor: number;
+            /** Expected Version */
+            expected_version: number;
         };
         /** KitchenTransition */
         KitchenTransition: {
@@ -1384,6 +1471,11 @@ export interface components {
         /** MovementResponse */
         MovementResponse: {
             /**
+             * Actor Name
+             * @default
+             */
+            actor_name: string;
+            /**
              * Id
              * Format: uuid
              */
@@ -1419,6 +1511,13 @@ export interface components {
             status_before: string;
             /** Status After */
             status_after: string;
+        };
+        /** NicknameInput */
+        NicknameInput: {
+            /** Nickname */
+            nickname: string;
+            /** Expected Nickname */
+            expected_nickname: string;
         };
         /** OperationResponse */
         OperationResponse: {
@@ -1682,6 +1781,11 @@ export interface components {
         };
         /** ProductionResponse */
         ProductionResponse: {
+            /**
+             * Actor Name
+             * @default
+             */
+            actor_name: string;
             /**
              * Id
              * Format: uuid
@@ -2109,6 +2213,11 @@ export interface components {
              * Format: password
              */
             password: string;
+            /**
+             * Nickname
+             * @default
+             */
+            nickname: string;
             /** Phone */
             phone?: string | null;
             /** Name */
@@ -2118,6 +2227,11 @@ export interface components {
         };
         /** UserResponse */
         UserResponse: {
+            /**
+             * Nickname
+             * @default
+             */
+            nickname: string;
             /**
              * Id
              * Format: uuid
@@ -2997,6 +3111,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setStaffNickname: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NicknameInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
                 };
             };
             /** @description Unauthorized */
@@ -5751,6 +5945,79 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BarcodeInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateStockItem: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemUpdateInput"];
             };
         };
         responses: {

@@ -10,6 +10,7 @@ export function Dialog({
   onClose,
   children,
   busy = false,
+  className = "",
 }: {
   open: boolean;
   title: string;
@@ -17,6 +18,7 @@ export function Dialog({
   onClose: () => void;
   children: ReactNode;
   busy?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -66,7 +68,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      className="dialog"
+      className={`dialog ${className}`}
       onKeyDown={containTab}
       aria-labelledby={`${id}-title`}
       aria-describedby={description ? `${id}-description` : undefined}

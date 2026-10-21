@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { Dialog } from "./Dialog";
+import { Button } from "./Button";
 import type { Staff } from "../api/identity";
 import { Icon, type IconName } from "./Icon";
 const sections: {
@@ -52,7 +55,7 @@ const sections: {
   },
   {
     href: "/staff/receipts",
-    label: "Приход",
+    label: "Поступления",
     icon: "plus",
     permission: "inventory.manage",
   },
@@ -70,9 +73,9 @@ const sections: {
   },
   { href: "/staff/profile", label: "Мой профиль", icon: "user" },
 ];
-export function StaffNavigation({ user }: { user: Staff }) {
+function NavigationContent({ user }: { user: Staff }) {
   return (
-    <aside className="workspace-sidebar">
+    <>
       <p className="sidebar-caption">Рабочее пространство</p>
       <nav aria-label="Разделы управления">
         {sections
@@ -93,12 +96,67 @@ export function StaffNavigation({ user }: { user: Staff }) {
           ))}
       </nav>
       <a className="sidebar-user" href="/staff/profile">
-        <span className="avatar">{user.name.slice(0, 1)}</span>
+        <span className="avatar">
+          {(user.nickname || user.name).slice(0, 1)}
+        </span>
         <span>
-          <strong>{user.name}</strong>
+          <strong>{user.nickname || user.name}</strong>
           <small>{user.login}</small>
         </span>
       </a>
-    </aside>
+    </>
+  );
+}
+
+export function StaffNavigation({ user }: { user: Staff }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const close = () => {
+      if (media.matches) setOpen(false);
+    };
+    media.addEventListener("change", close);
+    return () => media.removeEventListener("change", close);
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+  return (
+    <>
+      <div className="mobile-navigation">
+        <Button
+          variant="secondary"
+          icon="menu"
+          aria-expanded={open}
+          onClick={() => setOpen(true)}
+        >
+          Меню
+        </Button>
+        <span>
+          {sections.find((s) => s.href === window.location.pathname)?.label ||
+            "AsHana"}
+        </span>
+      </div>
+      <aside className="workspace-sidebar desktop-navigation">
+        <NavigationContent user={user} />
+      </aside>
+      {open && (
+        <Dialog
+          open
+          title="Меню"
+          className="navigation-drawer"
+          onClose={() => setOpen(false)}
+        >
+          <aside className="workspace-sidebar">
+            <NavigationContent user={user} />
+          </aside>
+        </Dialog>
+      )}
+    </>
   );
 }

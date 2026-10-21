@@ -91,6 +91,10 @@ export function RecipeForm({
             name: l.item_name,
             unit: l.unit as "kg" | "l",
             kind: "raw" as const,
+            category: "",
+            purchase_price_minor: 0,
+            sale_price_minor: 0,
+            version: 1,
           })) || [];
         setRaw([
           ...r,

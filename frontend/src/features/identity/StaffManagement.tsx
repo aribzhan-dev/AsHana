@@ -28,6 +28,7 @@ import { RoleFields } from "./RoleFields";
 
 type AuthProps = { onExpired: () => void };
 function CreateStaff({ onExpired }: AuthProps) {
+  const [nickname, setNickname] = useState("");
   const [name, setName] = useState("");
   const [login, setLogin] = useState("");
   const [phone, setPhone] = useState("");
@@ -59,12 +60,14 @@ function CreateStaff({ onExpired }: AuthProps) {
     try {
       await identityApi.create({
         name,
+        nickname,
         login,
         phone: phone || null,
         password,
         roles,
       });
       setName("");
+      setNickname("");
       setLogin("");
       setPhone("");
       setPassword("");
@@ -134,6 +137,14 @@ function CreateStaff({ onExpired }: AuthProps) {
             maxLength={64}
             error={fields.login}
             leadingIcon="user"
+          />
+          <Input
+            label="Никнейм"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            maxLength={100}
+            hint="Имя для истории операций. Если не указано, показывается имя сотрудника."
+            error={fields.nickname}
           />
           <PasswordInput
             label={t.password}
@@ -205,7 +216,12 @@ function EditRoles({
   }
   return (
     <div className="role-editor">
-      <h3>{target.name}</h3>
+      <h3>{target.nickname || target.name}</h3>
+      <NicknameEditor
+        target={target}
+        onUpdated={onUpdated}
+        onExpired={onExpired}
+      />
       <p className="muted">
         {target.login}
         {target.phone && <> · {target.phone}</>}
@@ -387,7 +403,7 @@ export function StaffManagement({
               {members.map((member) => (
                 <div key={member.id}>
                   <span>
-                    <strong>{member.name}</strong>
+                    <strong>{member.nickname || member.name}</strong>
                     <small>{member.login}</small>
                   </span>
                   <Button
@@ -440,6 +456,51 @@ export function StaffManagement({
           />
         </Dialog>
       )}
+    </div>
+  );
+}
+
+function NicknameEditor({
+  target,
+  onUpdated,
+  onExpired,
+}: AuthProps & { target: Staff; onUpdated: (v: Staff) => void }) {
+  const [nickname, setNickname] = useState(target.nickname || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function save() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      onUpdated(
+        await identityApi.nickname(target.id, nickname, target.nickname || ""),
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) onExpired();
+      else setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="form-stack">
+      <Input
+        label="Никнейм"
+        value={nickname}
+        maxLength={100}
+        onChange={(e) => setNickname(e.target.value)}
+        hint="Отображается в истории операций вместо ID."
+      />
+      <Button
+        variant="secondary"
+        loading={busy}
+        disabled={nickname === (target.nickname || "")}
+        onClick={() => void save()}
+      >
+        Сохранить никнейм
+      </Button>
+      {error && <Alert>{error}</Alert>}
     </div>
   );
 }

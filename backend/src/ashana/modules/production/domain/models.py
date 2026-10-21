@@ -77,6 +77,7 @@ class Production:
     created_at: datetime
     consumption: tuple[Consumption, ...]
     label: str = ""
+    actor_name: str = ""
     output_name: str = ""
     output_unit: str = "portion"
     recipe_version: int = 1

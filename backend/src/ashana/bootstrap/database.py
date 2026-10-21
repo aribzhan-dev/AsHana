@@ -3,7 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ashana.bootstrap.settings import Settings
 
-SCHEMA_REVISION = "0011_receiving"
+SCHEMA_REVISION = "0012_product_profiles"
 
 
 def create_database_engine(settings: Settings) -> Engine:

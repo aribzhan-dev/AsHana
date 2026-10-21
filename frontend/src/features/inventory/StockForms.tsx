@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
   inventoryApi,
@@ -22,21 +22,35 @@ import { useStockMutation } from "./useStockMutation";
 type Props = {
   onExpired: () => void;
   onSaved: () => void;
-  onCreated?: (id: string, unit: string) => void;
+  onCreated?: (id: string, unit: string, purchasePrice: number) => void;
   receiving?: boolean;
+  previous?: StockItem;
+  onBusy?: (busy: boolean) => void;
 };
 export function ItemForm({
   onExpired,
   onSaved,
   onCreated,
   receiving = false,
+  previous,
+  onBusy,
 }: Props) {
-  const [barcode, setBarcode] = useState("");
-  const [name, setName] = useState(""),
-    [kind, setKind] = useState<ItemInput["kind"]>("raw"),
-    [unit, setUnit] = useState<ItemInput["unit"]>("kg"),
+  const [barcode, setBarcode] = useState(previous?.barcode || "");
+  const [category, setCategory] = useState(previous?.category || "");
+  const [purchase, setPurchase] = useState(
+    String((previous?.purchase_price_minor || 0) / 100),
+  );
+  const [sale, setSale] = useState(
+    String((previous?.sale_price_minor || 0) / 100),
+  );
+  const [name, setName] = useState(previous?.name || ""),
+    [kind, setKind] = useState<ItemInput["kind"]>(
+      previous?.kind || "purchased",
+    ),
+    [unit, setUnit] = useState<ItemInput["unit"]>(previous?.unit || "pcs"),
     [notice, setNotice] = useState(false);
   const mutation = useStockMutation(onExpired);
+  useEffect(() => onBusy?.(mutation.busy), [mutation.busy, onBusy]);
   const units =
     kind === "raw"
       ? ["kg", "l"]
@@ -51,7 +65,20 @@ export function ItemForm({
       focusInvalid(event.currentTarget);
       return;
     }
+    const purchaseMinor = costMinor(purchase),
+      saleMinor = costMinor(sale);
+    if (purchaseMinor === undefined || saleMinor === undefined) {
+      mutation.setFields({
+        purchase_price_minor: purchaseMinor === undefined ? t.invalidCost : "",
+        sale_price_minor: saleMinor === undefined ? t.invalidCost : "",
+      });
+      focusInvalid(event.currentTarget);
+      return;
+    }
     const data = {
+      category: category.trim(),
+      purchase_price_minor: purchaseMinor,
+      sale_price_minor: saleMinor,
       name: name.trim(),
       kind,
       unit,
@@ -59,8 +86,21 @@ export function ItemForm({
     };
     if (
       await mutation.run(data, async (key) => {
-        const result = await inventoryApi.createItem(data, key);
-        onCreated?.(result.subject_id, unit);
+        const result = previous
+          ? await inventoryApi.updateItem(
+              previous.id,
+              {
+                name: data.name,
+                barcode: data.barcode,
+                category: data.category,
+                purchase_price_minor: purchaseMinor,
+                sale_price_minor: saleMinor,
+                expected_version: previous.version ?? 1,
+              },
+              key,
+            )
+          : await inventoryApi.createItem(data, key);
+        onCreated?.(result.subject_id, unit, purchaseMinor);
       })
     ) {
       setName("");
@@ -70,12 +110,11 @@ export function ItemForm({
     }
   }
   return (
-    <Card>
-      <h2>{t.createItem}</h2>
+    <div className="form-stack">
       <form
         noValidate
         onSubmit={(event) => void submit(event)}
-        aria-label={t.createItem}
+        aria-label={previous ? "Редактировать товар" : "Создать товар"}
       >
         <fieldset disabled={mutation.busy} className="form-fields">
           <Input
@@ -89,6 +128,7 @@ export function ItemForm({
           />
           <Select
             label={t.kind}
+            disabled={!!previous}
             value={kind}
             onChange={(e) => {
               const next = e.target.value as ItemInput["kind"];
@@ -104,6 +144,32 @@ export function ItemForm({
                 </option>
               ))}
           </Select>
+          <Input
+            label="Категория"
+            placeholder="Например, вода, напитки, готовая еда"
+            value={category}
+            maxLength={100}
+            onChange={(e) => setCategory(e.target.value)}
+            error={mutation.fields.category}
+          />
+          <div className="stock-form-grid">
+            <Input
+              label="Закупочная цена, ₸"
+              inputMode="decimal"
+              value={purchase}
+              onChange={(e) => setPurchase(e.target.value)}
+              error={mutation.fields.purchase_price_minor}
+              hint="За базовую единицу. Подставляется в новую накладную."
+            />
+            <Input
+              label="Цена продажи, ₸"
+              inputMode="decimal"
+              value={sale}
+              onChange={(e) => setSale(e.target.value)}
+              error={mutation.fields.sale_price_minor}
+              hint="Для новой публикации в меню. Старые цены не меняются."
+            />
+          </div>
           {kind === "purchased" && (
             <Input
               label="Штрихкод"
@@ -119,6 +185,7 @@ export function ItemForm({
           )}
           <Select
             label={t.unit}
+            disabled={!!previous}
             value={unit}
             error={mutation.fields.unit}
             onChange={(e) => setUnit(e.target.value as ItemInput["unit"])}
@@ -136,10 +203,10 @@ export function ItemForm({
           <Toast onClose={() => setNotice(false)}>{t.itemSaved}</Toast>
         )}
         <Button type="submit" loading={mutation.busy} icon="plus">
-          {t.createItem}
+          {previous ? "Сохранить изменения" : "Создать товар"}
         </Button>
       </form>
-    </Card>
+    </div>
   );
 }
 

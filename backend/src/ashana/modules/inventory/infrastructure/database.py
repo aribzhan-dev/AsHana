@@ -19,6 +19,7 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     Uuid,
+    func,
     select,
     text,
     true,
@@ -40,7 +41,13 @@ from ashana.modules.inventory.domain.models import (
 
 metadata = MetaData()
 # Reference-only table: the identity migration owns its definition.
-Table("identity_users", metadata, Column("id", Uuid, primary_key=True))
+staff_names = Table(
+    "identity_users",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("name", String(100)),
+    Column("nickname", String(100)),
+)
 items = Table(
     "inventory_items",
     metadata,
@@ -48,6 +55,10 @@ items = Table(
     Column("name", String(100), nullable=False),
     Column("name_key", String(200), nullable=False, unique=True),
     Column("barcode", String(14), unique=True),
+    Column("category", String(100), nullable=False),
+    Column("purchase_price_minor", BigInteger, nullable=False),
+    Column("sale_price_minor", BigInteger, nullable=False),
+    Column("version", Integer, nullable=False),
     Column("kind", String(20), nullable=False),
     Column("unit", String(10), nullable=False),
     CheckConstraint(
@@ -215,7 +226,7 @@ class PostgresInventoryRepository:
 
     def items(self, offset: int, limit: int, *, kind: str | None = None) -> list[Item]:
         rows = self.connection.execute(
-            select(items.c.id, items.c.name, items.c.kind, items.c.unit, items.c.barcode)
+            select(*[c for c in items.c if c.name != "name_key"])
             .where(items.c.kind == kind if kind else true())
             .order_by(items.c.name, items.c.id)
             .offset(offset)
@@ -224,21 +235,34 @@ class PostgresInventoryRepository:
         return [Item(**row) for row in rows]
 
     def item(self, item_id: UUID, *, lock: bool = False) -> Item | None:
-        query = select(items.c.id, items.c.name, items.c.kind, items.c.unit, items.c.barcode).where(
-            items.c.id == item_id
-        )
+        query = select(*[c for c in items.c if c.name != "name_key"]).where(items.c.id == item_id)
         row = self.connection.execute(query.with_for_update() if lock else query).mappings().first()
         return Item(**row) if row else None
 
     def update_barcode(self, item_id: UUID, barcode: str | None) -> None:
         try:
             self.connection.execute(
-                items.update().where(items.c.id == item_id).values(barcode=barcode)
+                items.update()
+                .where(items.c.id == item_id)
+                .values(barcode=barcode, version=items.c.version + 1)
             )
         except IntegrityError:
             raise InventoryError(
                 "ITEM_EXISTS", "Штрихкод уже используется другим товаром"
             ) from None
+
+    def update_item(self, item: Item) -> None:
+        values = asdict(item)
+        for field in ("id", "kind", "unit"):
+            values.pop(field)
+        try:
+            self.connection.execute(
+                items.update()
+                .where(items.c.id == item.id)
+                .values(**values, name_key=item.name.casefold())
+            )
+        except IntegrityError:
+            raise InventoryError("ITEM_EXISTS", "Название или штрихкод уже используются") from None
 
     def add_item(self, item: Item) -> None:
         try:
@@ -306,11 +330,19 @@ class PostgresInventoryRepository:
         )
 
     def add_movement(self, movement: Movement) -> None:
-        self.connection.execute(movements.insert().values(**asdict(movement)))
+        values = asdict(movement)
+        values.pop("actor_name")
+        self.connection.execute(movements.insert().values(**values))
 
     def movements(self, batch_id: UUID, offset: int, limit: int) -> list[Movement]:
         rows = self.connection.execute(
-            select(movements)
+            select(
+                movements,
+                func.coalesce(func.nullif(staff_names.c.nickname, ""), staff_names.c.name).label(
+                    "actor_name"
+                ),
+            )
+            .join(staff_names, movements.c.actor_id == staff_names.c.id)
             .where(movements.c.batch_id == batch_id)
             .order_by(movements.c.version.desc())
             .offset(offset)

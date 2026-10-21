@@ -117,6 +117,7 @@ class ConsumptionResponse(BaseModel):
 
 
 class ProductionResponse(BaseModel):
+    actor_name: str = ""
     id: UUID
     recipe_id: UUID
     recipe_version: int

@@ -1,6 +1,7 @@
 import type { SVGProps } from "react";
 
 export type IconName =
+  | "menu"
   | "sun"
   | "moon"
   | "monitor"
@@ -24,6 +25,7 @@ export type IconName =
   | "chart"
   | "utensils";
 const paths: Record<IconName, React.ReactNode> = {
+  menu: <path d="M3 6h18M3 12h18M3 18h18" />,
   grid: (
     <>
       <rect x="3" y="3" width="7" height="7" rx="1" />

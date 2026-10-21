@@ -19,7 +19,7 @@ test("кухня: версия рецепта, фактический выпус
     has: page.getByRole("heading", { name: "Каша для кухни", exact: true }),
   });
   await original
-    .getByRole("button", { name: "Новая версия", exact: true })
+    .getByRole("button", { name: "Редактировать рецепт", exact: true })
     .click();
   let dialog = page.getByRole("dialog", { name: "Новая версия", exact: true });
   await dialog.getByLabel("Плановый выход").fill("15");

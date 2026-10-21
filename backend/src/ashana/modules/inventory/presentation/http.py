@@ -34,6 +34,9 @@ class ItemInput(BaseModel):
     kind: Literal["raw", "purchased", "prepared"]
     unit: Literal["kg", "l", "pcs", "portion"]
     barcode: str | None = Field(default=None, max_length=14)
+    category: str = Field(default="", max_length=100)
+    purchase_price_minor: int = Field(default=0, ge=0, le=999999999999)
+    sale_price_minor: int = Field(default=0, ge=0, le=999999999999)
 
 
 class ReceiptInput(BaseModel):
@@ -58,11 +61,25 @@ class ChangeInput(BaseModel):
 
 
 class ItemResponse(BaseModel):
+    version: int = 1
     id: UUID
     name: str
     kind: Literal["raw", "purchased", "prepared"]
     unit: Literal["kg", "l", "pcs", "portion"]
     barcode: str | None = Field(default=None, max_length=14)
+    category: str = Field(default="", max_length=100)
+    purchase_price_minor: int = Field(default=0, ge=0, le=999999999999)
+    sale_price_minor: int = Field(default=0, ge=0, le=999999999999)
+
+
+class ItemUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(min_length=1, max_length=100)
+    barcode: str | None = Field(default=None, max_length=14)
+    category: str = Field(default="", max_length=100)
+    purchase_price_minor: int = Field(ge=0, le=999999999999)
+    sale_price_minor: int = Field(ge=0, le=999999999999)
+    expected_version: int = Field(ge=1)
 
 
 class OperationResponse(BaseModel):
@@ -107,6 +124,7 @@ class BatchResponse(BaseModel):
 
 
 class MovementResponse(BaseModel):
+    actor_name: str = ""
     id: UUID
     batch_id: UUID
     action: str
@@ -138,7 +156,15 @@ def create_item(data: ItemInput, request: Request, service: Service, key: Key) -
     return OperationResponse(
         **asdict(
             service.create_item(
-                session_token(request), key, data.name, data.kind, data.unit, data.barcode
+                session_token(request),
+                key,
+                data.name,
+                data.kind,
+                data.unit,
+                data.barcode,
+                data.category,
+                data.purchase_price_minor,
+                data.sale_price_minor,
             )
         )
     )
@@ -348,4 +374,15 @@ def set_barcode(
                 session_token(request), key, item_id, data.barcode, data.expected_barcode
             )
         )
+    )
+
+
+@router.put(
+    "/items/{item_id}", operation_id="updateStockItem", dependencies=[Depends(enforce_csrf)]
+)
+def update_item(
+    item_id: UUID, data: ItemUpdateInput, request: Request, service: Service, key: Key
+) -> OperationResponse:
+    return OperationResponse(
+        **asdict(service.edit_item(session_token(request), key, item_id, **data.model_dump()))
     )

@@ -7,5 +7,13 @@ const initialLabels: Record<string, string> = {
     "Технологию приготовления необходимо заполнить.",
 };
 export function displayText(value: string): string {
-  return initialLabels[value] || value;
+  if (initialLabels[value]) return initialLabels[value];
+  const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  if (new RegExp(`^Кассовая продажа (?:ДЕМО )?${uuid}$`, "i").test(value))
+    return "Продажа на кассе";
+  if (new RegExp(`^Выпуск ${uuid}$`, "i").test(value))
+    return "Собственное производство";
+  if (new RegExp(`^Выдача (?:ДЕМО )?${uuid}$`, "i").test(value))
+    return "Выдача заказа";
+  return value;
 }

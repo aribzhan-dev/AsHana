@@ -213,7 +213,7 @@ export function ProductionBoard({ onExpired }: { onExpired: () => void }) {
                           setEditor({ kind: "recipe", previous: recipe })
                         }
                       >
-                        {t.newVersion}
+                        Редактировать рецепт
                       </Button>
                     </div>
                   </Card>
@@ -270,13 +270,9 @@ export function ProductionBoard({ onExpired }: { onExpired: () => void }) {
                       >
                         {t.readRecipe}
                       </Button>
-                      <details className="field-hint">
-                        <summary>{s.author}</summary>
-                        <p>{p.actor_id}</p>
-                        <p>
-                          {s.label}: {p.id}
-                        </p>
-                      </details>
+                      <p className="field-hint">
+                        {s.author}: {p.actor_name || "Сотрудник"}
+                      </p>
                     </DetailsButton>
                   </Card>
                 ))}

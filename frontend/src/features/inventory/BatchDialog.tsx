@@ -243,7 +243,7 @@ export function HistoryDialog({
               </p>
               <p>{displayText(row.reason)}</p>
               <small>
-                {t.author}: {row.actor_id}
+                {t.author}: {row.actor_name || "Сотрудник"}
               </small>
             </li>
           ))}

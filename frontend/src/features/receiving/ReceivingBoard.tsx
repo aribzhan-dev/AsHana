@@ -260,6 +260,10 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
                     onChange={(e) =>
                       patch(row.id, {
                         item_id: e.target.value,
+                        price: String(
+                          (items.find((i) => i.id === e.target.value)
+                            ?.purchase_price_minor || 0) / 100,
+                        ),
                         unit:
                           items.find((i) => i.id === e.target.value)?.unit ||
                           "pcs",
@@ -439,14 +443,29 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
                 setCreate(null);
                 setAttempt((n) => n + 1);
               }}
-              onCreated={(id, unit) => {
+              onCreated={(id, unit, purchasePrice) => {
                 setRows((rs) => {
                   const empty = rs.find((r) => !r.item_id);
                   return empty
                     ? rs.map((r) =>
-                        r.id === empty.id ? { ...r, item_id: id, unit } : r,
+                        r.id === empty.id
+                          ? {
+                              ...r,
+                              item_id: id,
+                              unit,
+                              price: String(purchasePrice / 100),
+                            }
+                          : r,
                       )
-                    : [...rs, { ...fresh(), item_id: id, unit }];
+                    : [
+                        ...rs,
+                        {
+                          ...fresh(),
+                          item_id: id,
+                          unit,
+                          price: String(purchasePrice / 100),
+                        },
+                      ];
                 });
               }}
             />

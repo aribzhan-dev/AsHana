@@ -6,7 +6,16 @@ export type StockBatch = components["schemas"]["BatchResponse"];
 export type StockMovement = components["schemas"]["MovementResponse"];
 export type Receipt = components["schemas"]["ReceiptInput"];
 export type StockChange = components["schemas"]["ChangeInput"];
-export type ItemInput = components["schemas"]["ItemInput"];
+export type ItemInput = Omit<
+  components["schemas"]["ItemInput"],
+  "category" | "purchase_price_minor" | "sale_price_minor"
+> &
+  Partial<
+    Pick<
+      components["schemas"]["ItemInput"],
+      "category" | "purchase_price_minor" | "sale_price_minor"
+    >
+  >;
 function invalid(): never {
   throw new ApiError(0, t.genericError);
 }
@@ -123,6 +132,14 @@ export const inventoryApi = {
       `/inventory/batches/${id}/movements?offset=${offset}&limit=20`,
     ).then((value) => list(value, movement)),
   createItem: (data: ItemInput, key: string) => write("/items", data, key),
+  updateItem: (
+    id: string,
+    data: components["schemas"]["ItemUpdateInput"],
+    key: string,
+  ) =>
+    request(`/inventory/items/${id}`, "PUT", data, {
+      "Idempotency-Key": key,
+    }).then(operation),
   receive: (data: Receipt, key: string) => write("/receipts", data, key),
   change: (id: string, data: StockChange, key: string) =>
     write(`/batches/${id}/changes`, data, key),

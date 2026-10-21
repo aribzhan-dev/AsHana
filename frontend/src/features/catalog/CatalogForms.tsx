@@ -264,7 +264,12 @@ export function EntryForm({
               label={t.item}
               value={itemId}
               disabled={loading}
-              onChange={(e) => setItemId(e.target.value)}
+              onChange={(e) => {
+                setItemId(e.target.value);
+                const selected = items.find((i) => i.id === e.target.value);
+                setCategory(selected?.category || "");
+                setPrice(String((selected?.sale_price_minor || 0) / 100));
+              }}
               error={op.fields.item_id}
               required
             >

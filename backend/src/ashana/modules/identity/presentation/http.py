@@ -75,6 +75,7 @@ class LoginInput(InputModel):
 
 
 class StaffInput(LoginInput):
+    nickname: str = Field(default="", max_length=100)
     phone: str | None = Field(default=None, max_length=32)
     name: str = Field(min_length=1, max_length=100)
     roles: list[str] = Field(min_length=1, max_length=100)
@@ -93,6 +94,7 @@ def parse_roles(values: list[str]) -> frozenset[str]:
 
 
 class UserResponse(BaseModel):
+    nickname: str = ""
     id: UUID
     login: str
     phone: str | None
@@ -108,6 +110,7 @@ class UserResponse(BaseModel):
             login=user.login,
             phone=user.phone,
             name=user.name,
+            nickname=user.nickname,
             roles=sorted(user.roles),
             permissions=sorted(user.effective_permissions),
             is_demo=user.is_demo,
@@ -231,6 +234,7 @@ def create_staff(data: StaffInput, request: Request, service: Service) -> UserRe
             data.password.get_secret_value(),
             parse_roles(data.roles),
             phone=data.phone,
+            nickname=data.nickname,
         )
     )
 
@@ -285,3 +289,21 @@ def list_staff(request: Request, service: Service, offset: int = 0) -> list[User
     return [
         UserResponse.from_user(user) for user in service.list_staff(session_token(request), offset)
     ]
+
+
+class NicknameInput(InputModel):
+    nickname: str = Field(max_length=100)
+    expected_nickname: str = Field(max_length=100)
+
+
+@router.put(
+    "/admin/users/{user_id}/nickname",
+    operation_id="setStaffNickname",
+    dependencies=[Depends(enforce_csrf)],
+)
+def set_nickname(
+    user_id: UUID, data: NicknameInput, request: Request, service: Service
+) -> UserResponse:
+    return UserResponse.from_user(
+        service.set_nickname(session_token(request), user_id, data.nickname, data.expected_nickname)
+    )

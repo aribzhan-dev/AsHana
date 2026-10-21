@@ -24,6 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection, Engine
 
 from ashana.modules.inventory.application.ports import InventoryRepository
+from ashana.modules.inventory.infrastructure.database import staff_names
 from ashana.modules.production.application.ports import ProductionRepository
 from ashana.modules.production.domain.models import Consumption, Production, Recipe, RecipeLine
 
@@ -206,12 +207,16 @@ class PostgresProductionRepository:
             self.connection.execute(
                 select(
                     productions,
+                    func.coalesce(
+                        func.nullif(staff_names.c.nickname, ""), staff_names.c.name
+                    ).label("actor_name"),
                     batches.c.label,
                     batches.c.expires_at,
                     items.c.name.label("output_name"),
                     items.c.unit.label("output_unit"),
                     recipes.c.version.label("recipe_version"),
                 )
+                .join(staff_names, productions.c.actor_id == staff_names.c.id)
                 .join(batches, productions.c.id == batches.c.id)
                 .join(recipes, productions.c.recipe_id == recipes.c.id)
                 .join(items, recipes.c.output_item_id == items.c.id)

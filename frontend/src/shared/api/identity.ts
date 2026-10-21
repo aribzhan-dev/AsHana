@@ -29,6 +29,7 @@ function staff(value: unknown): Staff {
     login: value.login,
     phone: value.phone,
     name: value.name,
+    nickname: typeof value.nickname === "string" ? value.nickname : "",
     is_demo: value.is_demo,
     permissions: value.permissions,
     roles: value.roles as Role[],
@@ -92,6 +93,11 @@ export const identityApi = {
     request("/admin/users", "POST", data).then(staff),
   search: (login: string) =>
     request("/admin/users/search", "POST", { login }).then(staff),
+  nickname: (id: string, nickname: string, expected_nickname: string) =>
+    request(`/admin/users/${id}/nickname`, "PUT", {
+      nickname,
+      expected_nickname,
+    }).then(staff),
   roles: (id: string, roles: Role[]) =>
     request(`/admin/users/${id}/roles`, "PUT", { roles }).then(staff),
 };

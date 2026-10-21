@@ -1,4 +1,4 @@
-import { BarcodeEditor } from "./BarcodeEditor";
+import { Dialog } from "../../shared/ui/Dialog";
 import { receivingApi, type Directory } from "../../shared/api/receiving";
 import { DetailsButton } from "../../shared/ui/DetailsButton";
 import { displayText } from "../../shared/lib/display-text";
@@ -31,7 +31,10 @@ import { BatchDialog, HistoryDialog } from "./BatchDialog";
 import { ItemForm } from "./StockForms";
 
 export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
-  const [barcodeItem, setBarcodeItem] = useState<StockItem | null>(null);
+  const [itemEditor, setItemEditor] = useState<{ previous?: StockItem } | null>(
+    null,
+  );
+  const [editorBusy, setEditorBusy] = useState(false);
   const [warehouses, setWarehouses] = useState<Directory[]>([]);
   const [warehouse, setWarehouse] = useState("");
   const [batchQuery, setBatchQuery] = useState("");
@@ -116,7 +119,7 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
       <div className="page-heading stock-heading">
         <div>
           <p className="eyebrow">AsHana</p>
-          <h1>{t.title}</h1>
+          <h1>{tab === "items" ? "Товары" : t.title}</h1>
           <p className="muted">{t.intro}</p>
         </div>
         <Button variant="secondary" loading={loading} onClick={refresh}>
@@ -139,8 +142,15 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
       {error && <ErrorState message={error} onRetry={refresh} />}
       {loading && <LoadingState />}
       {tab === "items" && (
-        <div className="stock-columns">
-          <ItemForm onExpired={onExpired} onSaved={refresh} />
+        <div className="form-stack">
+          <div className="button-row">
+            <Button icon="plus" onClick={() => setItemEditor({})}>
+              Создать товар
+            </Button>
+            <a className="button button-secondary" href="/staff/receipts">
+              Поступления
+            </a>
+          </div>
           <Card>
             <h2>{t.items}</h2>
             <div className="form-stack">
@@ -183,14 +193,42 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
                         {t.kinds[item.kind]} · {t.units[item.unit]}
                         {item.barcode ? ` · ${item.barcode}` : ""}
                       </span>
-                      {item.kind === "purchased" && (
+                      <div className="button-row">
+                        <DetailsButton title={item.name}>
+                          <dl className="stock-meta">
+                            <div>
+                              <dt>Категория</dt>
+                              <dd>{item.category || "Без категории"}</dd>
+                            </div>
+                            <div>
+                              <dt>Тип / единица</dt>
+                              <dd>
+                                {t.kinds[item.kind]} · {t.units[item.unit]}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Закупочная цена</dt>
+                              <dd>
+                                {stockMoney(item.purchase_price_minor || 0)}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Цена продажи</dt>
+                              <dd>{stockMoney(item.sale_price_minor || 0)}</dd>
+                            </div>
+                            <div>
+                              <dt>Штрихкод</dt>
+                              <dd>{item.barcode || "Не указан"}</dd>
+                            </div>
+                          </dl>
+                        </DetailsButton>
                         <Button
-                          variant="ghost"
-                          onClick={() => setBarcodeItem(item)}
+                          variant="secondary"
+                          onClick={() => setItemEditor({ previous: item })}
                         >
-                          Штрихкод
+                          Редактировать
                         </Button>
-                      )}
+                      </div>
                     </li>
                   ))}
               </ul>
@@ -372,16 +410,25 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
           </div>
         </>
       )}
-      {barcodeItem && (
-        <BarcodeEditor
-          item={barcodeItem}
-          onExpired={onExpired}
-          onClose={() => setBarcodeItem(null)}
-          onSaved={() => {
-            setBarcodeItem(null);
-            refresh();
+      {itemEditor && (
+        <Dialog
+          open
+          title={itemEditor.previous ? "Редактировать товар" : "Создать товар"}
+          busy={editorBusy}
+          onClose={() => {
+            if (!editorBusy) setItemEditor(null);
           }}
-        />
+        >
+          <ItemForm
+            previous={itemEditor.previous}
+            onBusy={setEditorBusy}
+            onExpired={onExpired}
+            onSaved={() => {
+              setItemEditor(null);
+              saved();
+            }}
+          />
+        </Dialog>
       )}
       {dialog && (
         <BatchDialog

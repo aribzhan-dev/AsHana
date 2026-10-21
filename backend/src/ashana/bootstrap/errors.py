@@ -49,6 +49,7 @@ def register_error_handlers(app: FastAPI) -> None:
             "CSRF_FAILED": 403,
             "NOT_FOUND": 404,
             "RATE_LIMITED": 429,
+            "CONFLICT": 409,
             "LAST_ADMIN": 409,
             "USER_EXISTS": 409,
             "ADMIN_EXISTS": 409,

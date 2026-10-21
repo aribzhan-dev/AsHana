@@ -20,13 +20,15 @@ test("склад: приход, списание, пересчёт, истори
   await page
     .getByRole("button", { name: "Позиции склада", exact: true })
     .click();
-  const itemForm = page.getByRole("form", { name: "Добавить позицию" });
+  await page.getByRole("button", { name: "Создать товар" }).click();
+  const itemForm = page.getByRole("form", { name: "Создать товар" });
+  await itemForm.getByLabel("Тип позиции").selectOption("raw");
   await itemForm
     .getByLabel("Название", { exact: true })
     .fill("Рис для браузерной проверки");
-  await itemForm.getByRole("button", { name: "Добавить позицию" }).click();
+  await itemForm.getByRole("button", { name: "Создать товар" }).click();
   await expect(
-    page.getByText("Позиция добавлена", { exact: true }),
+    page.getByText("Изменение сохранено", { exact: true }),
   ).toBeVisible();
   await page.goto("/staff/receipts");
   await page.getByRole("button", { name: "Новая накладная" }).click();

@@ -34,6 +34,7 @@ users = Table(
     Column("phone", String(12), nullable=True),
     CheckConstraint("login ~ '^[a-z][a-z0-9._-]{2,39}$'", name="ck_identity_login"),
     Column("name", String(100), nullable=False),
+    Column("nickname", String(100), nullable=False),
     Column("password_hash", String(256), nullable=False),
     Column("is_active", Boolean, nullable=False),
     Column("is_demo", Boolean, nullable=False),
@@ -117,6 +118,7 @@ class PostgresIdentityRepository:
             row["is_active"],
             row["is_demo"],
             permissions,
+            row["nickname"],
         )
 
     def find_user(self, login: str, *, lock: bool = False) -> User | None:
@@ -138,6 +140,7 @@ class PostgresIdentityRepository:
                 login=user.login,
                 phone=user.phone,
                 name=user.name,
+                nickname=user.nickname,
                 password_hash=user.password_hash,
                 created_at=user.created_at,
                 is_active=user.is_active,
@@ -146,6 +149,11 @@ class PostgresIdentityRepository:
         )
         self.connection.execute(
             user_roles.insert(), [{"user_id": user.id, "role": str(role)} for role in user.roles]
+        )
+
+    def update_nickname(self, user_id: UUID, nickname: str) -> None:
+        self.connection.execute(
+            users.update().where(users.c.id == user_id).values(nickname=nickname)
         )
 
     def update_roles(self, user_id: UUID, roles: frozenset[str]) -> None:

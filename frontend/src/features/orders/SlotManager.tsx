@@ -23,6 +23,7 @@ import {
 import { Dialog } from "../../shared/ui/Dialog";
 const local = (value: string) =>
   new Date(Date.parse(value) + 5 * 3600000).toISOString().slice(0, 16);
+const displayDay = (day: string) => day.split("-").reverse().join(".");
 function SlotForm({
   period,
   previous,
@@ -246,9 +247,8 @@ export function SlotManager() {
           )}
           {period && (
             <>
-              <Button onClick={() => setEditor({})}>Добавить слот</Button>
               {!slots.length && <EmptyState title="Слотов пока нет" />}
-              <div className="button-row">
+              <div className="slot-toolbar">
                 <Select
                   label="День выдачи"
                   value={slotDay}
@@ -264,7 +264,7 @@ export function SlotManager() {
                     ),
                   ].map((d) => (
                     <option key={d} value={d}>
-                      {d}
+                      {displayDay(d)}
                     </option>
                   ))}
                 </Select>
@@ -289,6 +289,7 @@ export function SlotManager() {
                     </option>
                   ))}
                 </Select>
+                <Button onClick={() => setEditor({})}>Добавить слот</Button>
               </div>
               <div className="slot-grid">
                 {slots
@@ -305,7 +306,9 @@ export function SlotManager() {
                       onClick={() => setEditor({ previous: s })}
                       aria-label={`Изменить слот ${local(s.starts_at)}`}
                     >
-                      <small>{local(s.starts_at).slice(0, 10)}</small>
+                      <small>
+                        {displayDay(local(s.starts_at).slice(0, 10))}
+                      </small>
                       <strong>
                         {local(s.starts_at).slice(11)}–
                         {local(s.ends_at).slice(11)}

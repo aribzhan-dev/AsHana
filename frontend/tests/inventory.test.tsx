@@ -58,7 +58,14 @@ it("изменение передаёт CSRF и ключ идемпотентн�
     );
   vi.stubGlobal("fetch", fetchMock);
   await inventoryApi.createItem(
-    { name: "Рис", kind: "raw", unit: "kg" },
+    {
+      name: "Рис",
+      kind: "raw",
+      category: "",
+      purchase_price_minor: 0,
+      sale_price_minor: 0,
+      unit: "kg",
+    },
     "request-key",
   );
   expect(fetchMock).toHaveBeenLastCalledWith(
@@ -79,18 +86,14 @@ it("повтор после потери ответа использует то�
   const saved = vi.fn();
   render(<ItemForm onExpired={vi.fn()} onSaved={saved} />);
   await userEvent.type(screen.getByLabelText("Название"), "Рис");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Добавить позицию" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Создать товар" }));
   expect(
     await screen.findByText(
       "Ответ не получен. Проверьте историю или повторите отправку без изменения данных.",
     ),
   ).toBeVisible();
   expect(screen.getByLabelText("Название")).toHaveValue("Рис");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Добавить позицию" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Создать товар" }));
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
   expect(create.mock.calls[0]?.[1]).toBe(create.mock.calls[1]?.[1]);
   expect(screen.getByLabelText("Название")).toHaveValue("");
@@ -98,7 +101,18 @@ it("повтор после потери ответа использует то�
 it("приход собственной продукции недоступен, ошибка количества связана с полем", async () => {
   const { rerender } = render(
     <ReceiptForm
-      items={[{ id: "a", name: "Каша", kind: "prepared", unit: "portion" }]}
+      items={[
+        {
+          id: "a",
+          name: "Каша",
+          kind: "prepared",
+          category: "",
+          purchase_price_minor: 0,
+          sale_price_minor: 0,
+          version: 1,
+          unit: "portion",
+        },
+      ]}
       onExpired={vi.fn()}
       onSaved={vi.fn()}
     />,
@@ -108,7 +122,18 @@ it("приход собственной продукции недоступен,
   ).toBeVisible();
   rerender(
     <ReceiptForm
-      items={[{ id: "b", name: "Рис", kind: "raw", unit: "kg" }]}
+      items={[
+        {
+          id: "b",
+          name: "Рис",
+          kind: "raw",
+          category: "",
+          purchase_price_minor: 0,
+          sale_price_minor: 0,
+          version: 1,
+          unit: "kg",
+        },
+      ]}
       onExpired={vi.fn()}
       onSaved={vi.fn()}
     />,
