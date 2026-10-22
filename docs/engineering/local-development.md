@@ -115,8 +115,8 @@ Playwright по умолчанию проверяет localhost:8080; `ASHANA_E2
 
 ## Границы
 
-Это локальный scaffold, не production-конфигурация: HTTPS, backup/restore, внешний onboarding, rate limits бизнес-операций и эксплуатационные настройки ещё впереди.
-Mock-оплата не включена. В БД есть identity-таблицы; склад, заказы и платежи ещё не реализованы.
+Это локальная конфигурация, не production: HTTPS, хостинг, внешний onboarding и эксплуатационные
+настройки ещё впереди. Резервные копии — ниже, раздел PILOT-01. Оплата — только mock.
 Базовые Docker images используют ветки версий; точный digest не закреплён.
 См. [ADR-0006](../architecture/decisions/0006-local-foundation.md).
 

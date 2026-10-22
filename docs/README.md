@@ -40,6 +40,7 @@ WORKSPACE-01, OPERATIONS-01, PRODUCTS-02, DESIGN-02, OPERATIONS-02, LIVE-01 и F
 
 ## Разработка
 
+- [Быстрый запуск на новом компьютере](engineering/quick-start.md)
 - [Frontend](engineering/frontend-foundations.md)
 - [Компоненты UI-01](engineering/ui-components.md)
 - [Рабочий процесс и Definition of Done](engineering/development-workflow.md)
