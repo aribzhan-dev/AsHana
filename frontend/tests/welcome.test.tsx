@@ -21,15 +21,14 @@ describe("Стартовый экран", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
     render(<WelcomePage />);
-    expect(
-      screen.getByRole("button", { name: "Обновить меню" }),
-    ).toBeDisabled();
     expect(await screen.findByText(/Не удалось связаться/)).toBeInTheDocument();
     expect(screen.queryByText(/private connection/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Повторить" }));
-    expect(await screen.findByText(/Меню обновлено:/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Выберите блюда и удобное время/),
+      await screen.findByText("Сейчас нет доступных блюд"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Закажи заранее и забери без очереди"),
     ).toBeInTheDocument();
   });
 

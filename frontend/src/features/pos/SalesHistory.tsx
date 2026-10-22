@@ -7,6 +7,7 @@ import { Button } from "../../shared/ui/Button";
 import { Alert, Card, LoadingState } from "../../shared/ui/Feedback";
 import { DetailsButton } from "../../shared/ui/DetailsButton";
 import { OrderCard } from "../orders/OrderList";
+import { ReturnDialog } from "./ReturnDialog";
 export function SalesHistory({ permissions }: { permissions: string[] }) {
   const [channel, setChannel] = useState("cashier"),
     [offset, setOffset] = useState(0),
@@ -14,7 +15,9 @@ export function SalesHistory({ permissions }: { permissions: string[] }) {
     [orders, setOrders] = useState<Order[]>([]),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
-    [attempt, setAttempt] = useState(0);
+    [attempt, setAttempt] = useState(0),
+    [refund, setRefund] = useState<Sale | null>(null);
+  const canRefund = permissions.includes("pos.refund");
   useEffect(() => {
     let active = true;
     void (
@@ -84,14 +87,23 @@ export function SalesHistory({ permissions }: { permissions: string[] }) {
                         : s.outcome === "failed"
                           ? "Оплата отклонена"
                           : "Оплата не подтверждена"}{" "}
-                      · {s.id.slice(0, 8)}
+                      · {s.id.slice(0, 8).toUpperCase()}
                     </h3>
                     <p className="muted">
                       {stockDate(s.created_at)} ·{" "}
                       {s.payment_method_name || "Способ не указан"}
+                      {s.returned_minor > 0 &&
+                        ` · возврат ${stockMoney(s.returned_minor)}`}
                     </p>
                   </div>
                   <strong>{stockMoney(s.total_minor)}</strong>
+                  {canRefund &&
+                    s.outcome === "success" &&
+                    s.returned_minor < s.total_minor && (
+                      <Button variant="secondary" onClick={() => setRefund(s)}>
+                        Возврат
+                      </Button>
+                    )}
                   <DetailsButton title={`Чек ${s.id.slice(0, 8)}`}>
                     {s.lines.map((l) => (
                       <p key={l.entry_id}>
@@ -129,6 +141,16 @@ export function SalesHistory({ permissions }: { permissions: string[] }) {
             <p>Операций пока нет</p>
           )}
         </div>
+      )}
+      {refund && (
+        <ReturnDialog
+          sale={refund}
+          onClose={() => setRefund(null)}
+          onDone={() => {
+            setRefund(null);
+            setAttempt((n) => n + 1);
+          }}
+        />
       )}
       <div className="stock-pagination">
         <Button

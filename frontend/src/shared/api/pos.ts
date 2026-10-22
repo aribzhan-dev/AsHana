@@ -41,7 +41,29 @@ function list<T>(v: unknown, parse: (v: unknown) => T): T[] {
     throw new ApiError(0, "Не удалось прочитать данные кассы");
   return v.map(parse);
 }
+export type SaleReturn = components["schemas"]["ReturnResponse"];
+export type ReturnInput = components["schemas"]["ReturnInput"];
+function saleReturn(value: unknown): SaleReturn {
+  if (
+    !record(value) ||
+    typeof value.id !== "string" ||
+    typeof value.amount_minor !== "number" ||
+    !Number.isSafeInteger(value.amount_minor) ||
+    !["restock", "write_off"].includes(String(value.disposition)) ||
+    !Array.isArray(value.lines)
+  )
+    throw new ApiError(0, "Не удалось прочитать возврат");
+  return value as SaleReturn;
+}
 export const posApi = {
+  returns: (saleId: string) =>
+    request(`/pos/sales/${encodeURIComponent(saleId)}/returns`).then((v) =>
+      list(v, saleReturn),
+    ),
+  createReturn: (saleId: string, body: ReturnInput, key: string) =>
+    request(`/pos/sales/${encodeURIComponent(saleId)}/returns`, "POST", body, {
+      "Idempotency-Key": key,
+    }).then(saleReturn),
   menu: (offset = 0) =>
     request(`/pos/menu?offset=${offset}&limit=20`).then((v) =>
       list(v, publicEntry),

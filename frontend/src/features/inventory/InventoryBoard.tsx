@@ -277,7 +277,7 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
           </div>
           {updated && (
             <p className="field-hint">
-              {t.updated}: {stockDate(updated)}. {t.refreshHint}
+              {t.updated}: {stockDate(updated)}
             </p>
           )}
           {!batches.length && !loading && !error ? (

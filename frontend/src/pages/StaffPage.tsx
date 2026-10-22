@@ -15,6 +15,7 @@ import { LoginForm } from "../features/identity/LoginForm";
 import { StaffManagement } from "../features/identity/StaffManagement";
 import { Dashboard } from "../features/reporting/Dashboard";
 import { SessionsPanel } from "../features/identity/SessionsPanel";
+import { MyShift } from "../features/finance/MyShift";
 
 function Cabinet({ user, onExpired }: { user: Staff; onExpired: () => void }) {
   const [busy, setBusy] = useState(false);
@@ -35,7 +36,12 @@ function Cabinet({ user, onExpired }: { user: Staff; onExpired: () => void }) {
   }
   const section = window.location.pathname;
   if (section === "/staff")
-    return <Dashboard user={user} onExpired={onExpired} />;
+    return (
+      <>
+        <MyShift />
+        <Dashboard user={user} onExpired={onExpired} />
+      </>
+    );
   if (section === "/staff/team")
     return (
       <>
@@ -53,6 +59,7 @@ function Cabinet({ user, onExpired }: { user: Staff; onExpired: () => void }) {
         <p className="eyebrow">{t.team}</p>
         <h1>Профиль</h1>
       </div>
+      <MyShift />
       <Card className="profile">
         <div>
           <h2>{user.name}</h2>

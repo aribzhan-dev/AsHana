@@ -32,7 +32,7 @@ from ashana.modules.inventory.application.reservations import ReservationReposit
 from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.notifications.application.ports import NotificationWriter
 from ashana.modules.orders.application.ports import OrderRepository
-from ashana.modules.orders.domain.models import Order, OrderLine, Slot
+from ashana.modules.orders.domain.models import Order, OrderLine, Slot, short_number, tenge
 
 metadata = MetaData()
 Table("catalog_periods", metadata, Column("id", Uuid, primary_key=True))
@@ -80,6 +80,8 @@ drafts = Table(
     CheckConstraint("pickup_code IS NULL OR pickup_code ~ '^[0-9A-F]{8}$'", name="ck_pickup_code"),
     Column("slot_starts_at", DateTime(timezone=True), nullable=False),
     Column("slot_ends_at", DateTime(timezone=True), nullable=False),
+    Column("dining", String(10), nullable=False, server_default="here"),
+    CheckConstraint("dining IN ('here','takeaway')", name="ck_order_dining"),
     CheckConstraint(
         "status IN ('pending_payment','confirmed','preparing','ready','completed',"
         "'cancelled','expired','no_show')",
@@ -361,27 +363,29 @@ class PostgresOrderRepository:
 
     def event(self, order: Order, actor: UUID | None, kind: str, now: datetime) -> None:
         labels = {
-            "confirmed": "Новый заказ — тестовая оплата подтверждена",
+            "confirmed": "🆕 Новый заказ",
             "cancelled": "Заказ отменён",
-            "paid_cancelled": "Заказ отменён — тестовый возврат",
+            "paid_cancelled": "↩️ Заказ отменён, оплата возвращена",
             "expired": "Резерв истёк",
-            "preparing": "Заказ комплектуется",
-            "ready": "Заказ готов к выдаче",
-            "completed": "Заказ выдан (ДЕМО)",
+            "preparing": "👨‍🍳 Заказ собирается",
+            "ready": "✅ Заказ готов к выдаче",
+            "completed": "📦 Заказ выдан",
         }
-        lines = "\n".join(f"{line.name}: {line.quantity} шт/порц." for line in order.lines)
+        zone = ZoneInfo("Asia/Almaty")
+        starts = order.slot_starts_at.astimezone(zone)
+        ends = order.slot_ends_at.astimezone(zone)
+        lines = "\n".join(f"• {line.name} × {line.quantity}" for line in order.lines)
         event_id = uuid4()
-        local_time = order.slot_starts_at.astimezone(ZoneInfo("Asia/Almaty")).strftime(
-            "%d.%m.%Y %H:%M"
-        )
+        # No phone, guest secret or pickup code: the chat is shared by staff.
         message = (
-            f"AsHana · {labels.get(kind, kind)}\nЗаказ {order.id}\n{lines}\n"
-            f"Сумма: {order.total_minor // 100},{order.total_minor % 100:02d} ₸\n"
-            f"Выдача: {local_time} (Астана)\nСобытие: {event_id}\n"
-            "ДЕМО: реальные деньги не списывались. Не является реальной оплатой еды."
+            f"{labels.get(kind, kind)} №{short_number(order.id)}\n"
+            f"{'С собой' if order.dining == 'takeaway' else 'В столовой'} · "
+            f"выдача {starts:%d.%m %H:%M}–{ends:%H:%M}\n"
+            f"{lines}\n"
+            f"Итого: {tenge(order.total_minor)} · оплата тестовая"
         )
         if kind in ("confirmed", "paid_cancelled", "preparing", "ready", "completed"):
-            self.notifications.enqueue(event_id, message, now)
+            self.notifications.enqueue(event_id, message, now, order.id)
         self.connection.execute(
             events.insert().values(
                 id=uuid4(),

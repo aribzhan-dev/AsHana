@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { selectTheme } from "./theme-helper";
+import { orderDish, payWithTestCard } from "./guest-helper";
+import { orderNumber } from "../../src/shared/lib/pickup-qr";
 test.use({ trace: "off", screenshot: "off", video: "off" });
 test("оплата предшествует заказу; гость, кухня, отмена и мобильные темы", async ({
   page,
@@ -8,31 +10,11 @@ test("оплата предшествует заказу; гость, кухня
   test.setTimeout(120000);
   test.skip(!process.env.ASHANA_TEST_PASSWORD, "Нужен изолированный стенд");
   await page.goto("/");
-  const card = page.locator(".catalog-card").filter({
-    has: page.getByRole("heading", {
-      name: "Обед для заказа из браузера",
-      exact: true,
-    }),
-  });
-  for (let n = 0; n < 10 && (await card.count()) === 0; n++) {
-    await expect(
-      page.getByRole("status").filter({ hasText: "Меню обновлено:" }),
-    ).toBeVisible();
-    if (await card.count()) break;
-    await page.getByRole("button", { name: "Далее", exact: true }).click();
-  }
-  await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "В корзину" }).click();
-  const slot = page.getByLabel("Время получения (Астана)");
-  await expect(slot).toBeEnabled();
-  await expect(slot.locator("option")).toHaveCount(2);
-  await slot.selectOption({ index: 1 });
-  await page.getByRole("button", { name: "Заказать" }).click();
-  await expect(page).toHaveURL(/\/orders$/);
+  await orderDish(page, "Обед для заказа из браузера");
   const draft = page
     .locator(".order-card")
     .filter({ hasText: "Обед для заказа из браузера" });
-  await expect(draft).toContainText("Это ещё не заказ");
+  await expect(draft.getByRole("timer")).toBeVisible();
   expect(await (await page.request.get("/api/v1/orders")).json()).toEqual([]);
   const pending = (await (
     await page.request.get("/api/v1/orders/checkouts")
@@ -53,7 +35,7 @@ test("оплата предшествует заказу; гость, кухня
   ).toBeVisible();
   const staffCard = staff.locator(".order-card").filter({
     has: staff.getByRole("heading", {
-      name: `Заказ ${orderId.slice(0, 8)}`,
+      name: `Заказ №${orderNumber(orderId)}`,
       exact: true,
     }),
   });
@@ -65,10 +47,10 @@ test("оплата предшествует заказу; гость, кухня
     },
     { times: 1 },
   );
-  await draft.getByRole("button", { name: "Оплатить заказ" }).click();
+  await payWithTestCard(page);
   await expect(draft).toContainText("Оплата не подтверждена");
   expect(await (await page.request.get("/api/v1/orders")).json()).toEqual([]);
-  await draft.getByRole("button", { name: "Оплатить заказ" }).click();
+  await payWithTestCard(page);
   await expect(draft).toContainText("Принят");
   await expect(
     draft.getByRole("button", { name: "Оплатить заказ" }),

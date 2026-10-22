@@ -35,10 +35,12 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "production.manage",
             "orders.fulfil",
             "pos.sell",
+            "pos.refund",
             "inventory.manage",
             "inventory.writeoff",
             "catalog.manage",
             "reporting.read",
+            "finance.manage",
         }
     ),
     Role.ADMIN: frozenset({"identity.manage"}),

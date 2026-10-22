@@ -3,6 +3,10 @@ import { request, record, ApiError } from "./http";
 import { operation } from "./inventory";
 export type Directory = components["schemas"]["DirectoryResponse"];
 export type DirectoryKind = Directory["kind"];
+export type PurchaseKind = Exclude<
+  DirectoryKind,
+  "category" | "expense_category"
+>;
 export type Invoice = components["schemas"]["InvoiceResponse"];
 export type InvoiceInput = components["schemas"]["InvoiceInput"];
 function directories(value: unknown): Directory[] {
@@ -13,7 +17,13 @@ function directories(value: unknown): Directory[] {
         !record(d) ||
         typeof d.id !== "string" ||
         typeof d.name !== "string" ||
-        !["supplier", "warehouse", "payment_method"].includes(String(d.kind)),
+        ![
+          "supplier",
+          "warehouse",
+          "payment_method",
+          "category",
+          "expense_category",
+        ].includes(String(d.kind)),
     )
   )
     throw new ApiError(0, "Не удалось прочитать справочник");
@@ -46,6 +56,17 @@ export const receivingApi = {
         throw new ApiError(0, "Не удалось прочитать накладные");
       return value as Invoice[];
     }),
+  pay: (
+    invoiceId: string,
+    body: components["schemas"]["InvoicePaymentInput"],
+    key: string,
+  ) =>
+    request(
+      `/inventory/invoices/${encodeURIComponent(invoiceId)}/payments`,
+      "POST",
+      body,
+      { "Idempotency-Key": key },
+    ).then(operation),
   receive: (body: InvoiceInput, key: string) =>
     request("/inventory/invoices", "POST", body, {
       "Idempotency-Key": key,

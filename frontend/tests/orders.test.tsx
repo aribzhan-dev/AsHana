@@ -17,6 +17,7 @@ const checkout: Order = {
   version: 1,
   slot_starts_at: "2026-10-21T12:00:00Z",
   slot_ends_at: "2026-10-21T12:10:00Z",
+  dining: "here",
   lines: [
     {
       entry_id: "entry",
@@ -29,6 +30,38 @@ const checkout: Order = {
   ],
 };
 afterEach(() => vi.restoreAllMocks());
+async function payWithTestCard() {
+  await userEvent.click(screen.getByRole("button", { name: "Заполнить" }));
+  await userEvent.click(screen.getByRole("button", { name: /^Оплатить \d/ }));
+}
+it("тестовая карта: настоящие номера отклоняются, данные карты не уходят на сервер", async () => {
+  const pay = vi
+    .spyOn(ordersApi, "pay")
+    .mockResolvedValue({ ...checkout, status: "confirmed" });
+  render(<OrderCard order={checkout} staff={false} onChanged={vi.fn()} />);
+  await userEvent.click(screen.getByRole("button", { name: "Оплатить заказ" }));
+  await userEvent.type(
+    screen.getByLabelText("Номер карты"),
+    "4111111111111111",
+  );
+  await userEvent.type(screen.getByLabelText("Срок действия"), "1230");
+  await userEvent.type(screen.getByLabelText("CVV"), "123");
+  await userEvent.click(screen.getByRole("button", { name: /^Оплатить \d/ }));
+  expect(
+    await screen.findByText(/настоящие карты не принимаются/),
+  ).toBeInTheDocument();
+  expect(pay).not.toHaveBeenCalled();
+  await userEvent.clear(screen.getByLabelText("Номер карты"));
+  await userEvent.type(
+    screen.getByLabelText("Номер карты"),
+    "4000000000000002",
+  );
+  await userEvent.click(screen.getByRole("button", { name: /^Оплатить \d/ }));
+  await waitFor(() => expect(pay).toHaveBeenCalledOnce());
+  expect(pay.mock.calls[0]).toHaveLength(3);
+  expect(pay.mock.calls[0]?.[1]).toBe("failed");
+  expect(JSON.stringify(pay.mock.calls)).not.toContain("4000000000000002");
+});
 it("оформление до оплаты отделено от заказа, повтор оплаты сохраняет ключ", async () => {
   const pay = vi
     .spyOn(ordersApi, "pay")
@@ -39,11 +72,12 @@ it("оформление до оплаты отделено от заказа, �
   expect(
     screen.getByRole("heading", { name: /Оформление/ }),
   ).toBeInTheDocument();
-  expect(screen.getByText(/Это ещё не заказ/)).toBeInTheDocument();
+  expect(screen.getByRole("timer")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Оплатить заказ" }));
-  await screen.findByText(/Ответ не получен/);
+  await payWithTestCard();
+  await screen.findAllByText(/Ответ не получен/);
   expect(changed).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole("button", { name: "Оплатить заказ" }));
+  await userEvent.click(screen.getByRole("button", { name: /^Оплатить \d/ }));
   await waitFor(() => expect(changed).toHaveBeenCalledOnce());
   expect(pay.mock.calls[0]?.[2]).toBe(pay.mock.calls[1]?.[2]);
 });
@@ -51,6 +85,7 @@ it("отказ не показывает подтверждённый заказ
   vi.spyOn(ordersApi, "pay").mockResolvedValue(checkout);
   render(<OrderCard order={checkout} staff={false} onChanged={vi.fn()} />);
   await userEvent.click(screen.getByRole("button", { name: "Оплатить заказ" }));
+  await payWithTestCard();
   await screen.findByText(/Оплата не подтверждена\. Можно/);
   expect(screen.queryByText("Принят")).not.toBeInTheDocument();
 });

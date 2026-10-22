@@ -47,10 +47,6 @@ export function CashWriteOff({ onExpired }: { onExpired: () => void }) {
   return (
     <section className="form-stack">
       <h2>Списание готовых товаров</h2>
-      <p className="field-hint">
-        Укажите количество и причину: срок истёк, порча или не продано. Активные
-        резервы списать нельзя.
-      </p>
       <Input
         label="Найти товар для списания"
         value={query}

@@ -13,6 +13,7 @@ from ashana.modules.inventory.domain.models import (
     InventoryError,
     Invoice,
     InvoiceLine,
+    InvoicePayment,
     Item,
     Movement,
     Result,
@@ -23,6 +24,17 @@ from ashana.modules.inventory.domain.models import (
 )
 
 
+def known_category(repo: InventoryRepository, category: str) -> str:
+    """Return the directory spelling so one category is never stored twice."""
+    if not category.strip():
+        return ""
+    wanted = category.strip().casefold()
+    match = next((d for d in repo.directories("category") if d.name.casefold() == wanted), None)
+    if not match:
+        raise invalid("category", "Выберите категорию из списка или создайте новую")
+    return match.name
+
+
 class InventoryService:
     def __init__(
         self,
@@ -30,8 +42,11 @@ class InventoryService:
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         *,
         cashier: bool = False,
+        photos: Callable[[bytes], bytes] | None = None,
     ) -> None:
         self.uow, self.clock, self.cashier = uow, clock, cashier
+        # Re-encodes uploads (size, format, metadata); supplied by infrastructure.
+        self.photos = photos
 
     def items(self, token: str, offset: int = 0, limit: int = 50) -> list[Item]:
         with self.uow() as uow:
@@ -95,10 +110,18 @@ class InventoryService:
         category: str = "",
         purchase_price_minor: int = 0,
         sale_price_minor: int = 0,
+        always_on_menu: bool = False,
     ) -> Result:
         def action(repo: InventoryRepository, actor: UUID, now: datetime) -> Result:
             item = Item.new(
-                name, kind, unit, barcode, category, purchase_price_minor, sale_price_minor
+                name,
+                kind,
+                unit,
+                barcode,
+                known_category(repo, category),
+                purchase_price_minor,
+                sale_price_minor,
+                always_on_menu,
             )
             repo.add_item(item)
             return Result(item.id, 1)
@@ -121,6 +144,7 @@ class InventoryService:
                     if category or purchase_price_minor or sale_price_minor
                     else {}
                 ),
+                **({"always_on_menu": True} if always_on_menu else {}),
             },
             action,
         )
@@ -303,11 +327,13 @@ class InventoryService:
             return uow.repository.directories(kind)
 
     def create_directory(self, token: str, key: UUID, kind: str, name: str) -> Result:
-        if kind not in ("supplier", "warehouse", "payment_method"):
+        if kind not in ("supplier", "warehouse", "payment_method", "category", "expense_category"):
             raise invalid("kind", "Неизвестный справочник")
 
         def action(repo: InventoryRepository, actor: UUID, now: datetime) -> Result:
-            entry = DirectoryEntry(uuid4(), kind, text_value(name, "name", 100))
+            # Menu entries store categories in 60 characters.
+            limit = 60 if kind == "category" else 100
+            entry = DirectoryEntry(uuid4(), kind, text_value(name, "name", limit))
             repo.add_directory(entry)
             return Result(entry.id, 1)
 
@@ -330,6 +356,7 @@ class InventoryService:
         expenses_minor: int,
         note: str,
         lines: list[InvoiceLine],
+        paid_minor: int | None = None,
     ) -> Result:
         def action(repo: InventoryRepository, actor: UUID, now: datetime) -> Result:
             label = text_value(number, "number", 100)
@@ -422,6 +449,9 @@ class InventoryService:
                 total += cost
             if total + expenses_minor > 999999999999:
                 raise invalid("lines", "Превышена максимальная сумма накладной")
+            paid = total + expenses_minor if paid_minor is None else paid_minor
+            if type(paid) is not int or not 0 <= paid <= total + expenses_minor:
+                raise invalid("paid_minor", "Оплачено может быть от 0 до суммы накладной")
             repo.add_invoice(
                 Invoice(
                     invoice_id,
@@ -437,7 +467,10 @@ class InventoryService:
                     actor,
                     now,
                     snapshots,
-                    *names,
+                    supplier_name=names[0],
+                    warehouse_name=names[1],
+                    payment_method_name=names[2],
+                    paid_on_receipt_minor=paid,
                 )
             )
             return Result(invoice_id, 1)
@@ -455,6 +488,71 @@ class InventoryService:
                 expenses_minor=expenses_minor,
                 note=note,
                 lines=[asdict(line) for line in lines],
+                **({} if paid_minor is None else {"paid_minor": paid_minor}),
+            ),
+            action,
+        )
+
+    def invoice_payments(self, token: str, invoice_id: UUID) -> list[InvoicePayment]:
+        with self.uow() as uow:
+            uow.authorize(token)
+            if not uow.repository.invoice(invoice_id):
+                raise InventoryError("NOT_FOUND", "Накладная не найдена")
+            return uow.repository.invoice_payments(invoice_id)
+
+    def pay_invoice(
+        self,
+        token: str,
+        key: UUID,
+        invoice_id: UUID,
+        amount_minor: int,
+        payment_method_id: UUID,
+        paid_at: datetime,
+        note: str = "",
+    ) -> Result:
+        """Pay part or all of a supplier debt; payments are append-only."""
+
+        def action(repo: InventoryRepository, actor: UUID, now: datetime) -> Result:
+            invoice = repo.invoice(invoice_id, lock=True)
+            if not invoice:
+                raise InventoryError("NOT_FOUND", "Накладная не найдена")
+            debt = invoice.total_minor - invoice.paid_minor
+            if type(amount_minor) is not int or amount_minor < 1:
+                raise invalid("amount_minor", "Укажите сумму оплаты больше нуля")
+            if amount_minor > debt:
+                raise InventoryError(
+                    "PAYMENT_EXCEEDS_DEBT",
+                    "Сумма больше долга по накладной",
+                    {"amount_minor": ["Сумма больше долга по накладной"]},
+                )
+            if not paid_at.tzinfo or paid_at > now or paid_at < invoice.received_at:
+                raise invalid("paid_at", "Дата оплаты — между приходом и текущим временем")
+            if not any(d.id == payment_method_id for d in repo.directories("payment_method")):
+                raise invalid("payment_method_id", "Выберите способ оплаты из настроек")
+            payment = InvoicePayment(
+                uuid4(),
+                invoice_id,
+                amount_minor,
+                payment_method_id,
+                text_value(note, "note") if note.strip() else "",
+                actor,
+                paid_at,
+                now,
+            )
+            repo.add_invoice_payment(payment)
+            repo.audit(actor, "invoice_payment", payment.id, now)
+            return Result(payment.id, 1)
+
+        return self._write(
+            token,
+            "invoice_paid",
+            key,
+            dict(
+                invoice_id=invoice_id,
+                amount_minor=amount_minor,
+                payment_method_id=payment_method_id,
+                paid_at=paid_at,
+                note=note,
             ),
             action,
         )
@@ -470,6 +568,7 @@ class InventoryService:
         purchase_price_minor: int,
         sale_price_minor: int,
         expected_version: int,
+        always_on_menu: bool = False,
     ) -> Result:
         def action(repo: InventoryRepository, actor: UUID, now: datetime) -> Result:
             item = repo.item(item_id, lock=True)
@@ -484,9 +583,10 @@ class InventoryService:
                 item.kind,
                 item.unit,
                 barcode,
-                category,
+                known_category(repo, category),
                 purchase_price_minor,
                 sale_price_minor,
+                always_on_menu,
             )
 
             updated = replace(updated, id=item.id, version=item.version + 1)
@@ -505,9 +605,43 @@ class InventoryService:
                 purchase_price_minor=purchase_price_minor,
                 sale_price_minor=sale_price_minor,
                 expected_version=expected_version,
+                **({"always_on_menu": True} if always_on_menu else {}),
             ),
             action,
         )
+
+    def set_image(self, token: str, item_id: UUID, data: bytes) -> str:
+        with self.uow() as uow:
+            uow.authorize(token)
+        if not self.photos:
+            raise invalid("image", "Загрузка фото недоступна")
+        # CPU-heavy decoding happens before the transaction and only for staff.
+        photo = self.photos(data)
+        with self.uow() as uow:
+            actor = uow.authorize(token)
+            item = uow.repository.item(item_id, lock=True)
+            if not item or item.kind == "raw":
+                raise InventoryError("NOT_FOUND", "Фото добавляется к товарам и блюдам меню")
+            now = self.clock()
+            digest = uow.repository.save_image(item_id, photo, actor, now)
+            uow.repository.audit(actor, "item_image_set", item_id, now)
+            uow.commit()
+            return digest
+
+    def image(self, token: str, item_id: UUID) -> bytes | None:
+        with self.uow() as uow:
+            uow.authorize(token)
+            found = uow.repository.image(item_id)
+            return found[0] if found else None
+
+    def remove_image(self, token: str, item_id: UUID) -> None:
+        with self.uow() as uow:
+            actor = uow.authorize(token)
+            if not uow.repository.item(item_id, lock=True):
+                raise InventoryError("NOT_FOUND", "Товар не найден")
+            uow.repository.delete_image(item_id)
+            uow.repository.audit(actor, "item_image_removed", item_id, self.clock())
+            uow.commit()
 
     def set_barcode(
         self,

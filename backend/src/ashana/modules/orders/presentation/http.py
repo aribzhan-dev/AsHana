@@ -66,6 +66,7 @@ class CheckoutInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     slot_id: UUID
     lines: list[OrderChoice] = Field(min_length=1, max_length=100)
+    dining: Literal["here", "takeaway"] = "here"
 
 
 class OrderLineResponse(BaseModel):
@@ -100,6 +101,7 @@ class OrderResponse(BaseModel):
     slot_starts_at: datetime
     slot_ends_at: datetime
     stock_issue: bool
+    dining: Literal["here", "takeaway"] = "here"
     pickup_code: str | None = None
 
     @classmethod
@@ -190,7 +192,11 @@ def update_slot(
 def checkout(data: CheckoutInput, request: Request, service: Service, key: Key) -> OrderResponse:
     return OrderResponse.from_order(
         service.checkout(
-            guest_token(request), key, data.slot_id, [Choice(**c.model_dump()) for c in data.lines]
+            guest_token(request),
+            key,
+            data.slot_id,
+            [Choice(**c.model_dump()) for c in data.lines],
+            data.dining,
         )
     )
 
@@ -216,6 +222,11 @@ def staff(
         OrderResponse.from_order(o, staff=True)
         for o in service.staff_orders(session_token(request), offset, limit, state)
     ]
+
+
+@router.get("/staff/{id}", operation_id="getStaffOrder")
+def staff_order(id: UUID, request: Request, service: Service) -> OrderResponse:
+    return OrderResponse.from_order(service.staff_order(session_token(request), id), staff=True)
 
 
 @router.post("/{id}/cancel", operation_id="cancelGuestOrder", dependencies=[Depends(enforce_csrf)])

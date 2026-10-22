@@ -16,6 +16,7 @@ const entry: PublicEntry = {
   description: "",
   portion_label: "250 г",
   price_minor: 12345,
+  image_url: "",
   available: 2,
   starts_at: "2026-10-21T05:00:00Z",
   ends_at: "2026-10-21T15:00:00Z",
@@ -27,6 +28,7 @@ const receipt: Sale = {
   outcome: "success",
   mode: "mock",
   currency: "KZT",
+  returned_minor: 0,
   total_minor: 12345,
   created_at: "2026-10-21T07:00:00Z",
   lines: [
@@ -48,6 +50,7 @@ beforeEach(() => {
       id: "00000000-0000-0000-0000-000000000002",
       name: "Наличные",
       kind: "payment_method",
+      commission_bp: 0,
     },
   ]);
   vi.spyOn(posApi, "menu").mockResolvedValue([entry]);

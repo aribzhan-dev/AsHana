@@ -1,4 +1,5 @@
 import os
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -19,6 +20,11 @@ def test_product_profiles_and_author_names(system, operations_admin):
     engine = create_database_engine(settings)
     service = inventory_service(engine, identity)
     token = operations_admin
+    # Categories come from the shared directory since OPERATIONS-02.
+    for category in ("Вода", "Напитки"):
+        # Another test in this database may have created it already.
+        with suppress(InventoryError):
+            service.create_directory(token, uuid4(), "category", category)
     result = service.create_item(
         token, uuid4(), f"Вода {uuid4()}", "purchased", "pcs", None, "Вода", 10000, 20000
     )

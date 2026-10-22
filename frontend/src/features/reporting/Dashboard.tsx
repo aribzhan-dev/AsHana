@@ -180,11 +180,6 @@ export function Dashboard({
                   <Ranking title="Лидеры продаж" items={data.top} />
                   <Ranking title="Продаются реже" items={data.low} />
                 </div>
-                <p className="field-hint">
-                  Рейтинг по оплаченным порциям и штукам за выбранный период.
-                  Включены готовые товары без продаж. Возвраты учитываются
-                  отдельно.
-                </p>
                 <a href="/staff/reports">Открыть подробные отчёты →</a>
               </>
             )

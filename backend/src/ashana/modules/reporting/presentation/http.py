@@ -70,6 +70,7 @@ class DashboardResponse(BaseModel):
     totals: dict[str, str]
     top: list[dict[str, str]]
     low: list[dict[str, str]]
+    hours: list[dict[str, str]]
 
 
 @router.get("/dashboard", operation_id="getDashboard")

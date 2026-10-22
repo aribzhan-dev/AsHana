@@ -1,17 +1,24 @@
 import { expect, test } from "@playwright/test";
-import { selectTheme } from "./theme-helper";
+import { selectTheme, tabKey } from "./theme-helper";
+import type { Page } from "@playwright/test";
+
+const menuReady = (page: Page) =>
+  expect(
+    page.locator('.food-grid, .empty-state:not([role="status"])').first(),
+  ).toBeVisible();
 
 test("API доступен через общий origin, клавиатура и сохранение темы", async ({
   page,
   request,
+  browserName,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const response = await request.get("/api/v1/health/ready");
   expect(response.ok()).toBe(true);
   await page.goto("/");
-  await expect(page.getByRole("status")).toContainText("Меню обновлено:");
-  await page.keyboard.press("Tab");
+  await menuReady(page);
+  await page.keyboard.press(tabKey(browserName));
   await expect(
     page.getByRole("link", { name: "Перейти к содержимому" }),
   ).toBeFocused();
@@ -32,7 +39,7 @@ test("тема устройства меняется без перезагруз
   await expect(
     page.getByRole("button", { name: "Тема оформления: Как на устройстве" }),
   ).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("Меню обновлено:");
+  await menuReady(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -51,8 +58,8 @@ test("ошибка подключения и повтор", async ({ page }) => 
     "Не удалось выполнить действие",
   );
   await page.unroute("**/api/v1/catalog/menu?**");
-  await page.getByRole("button", { name: "Обновить меню" }).click();
-  await expect(page.getByRole("status")).toContainText("Меню обновлено:");
+  await page.getByRole("button", { name: "Повторить" }).click();
+  await menuReady(page);
 });
 
 for (const width of [360, 390, 768, 1280, 1440]) {
@@ -61,20 +68,23 @@ for (const width of [360, 390, 768, 1280, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/");
       await selectTheme(page, theme);
-      await expect(page.getByRole("status")).toContainText("Меню обновлено:");
+      await menuReady(page);
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth,
         ),
       ).toBe(true);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      const retry = page.getByRole("button", { name: "Обновить меню" });
-      await retry.scrollIntoViewIfNeeded();
-      await expect(retry).toBeInViewport();
-      const buttonBox = await retry.boundingBox();
-      expect(buttonBox?.height).toBeGreaterThanOrEqual(44);
-      await retry.click();
-      await expect(page.getByRole("status")).toContainText("Меню обновлено:");
+      // Phones use the bottom tab bar; wide screens show the same link in the header.
+      const tab =
+        width < 900
+          ? page
+              .getByRole("navigation", { name: "Разделы для гостя" })
+              .getByRole("link", { name: "Заказы" })
+          : page.getByRole("link", { name: "Мои заказы" });
+      await expect(tab).toBeInViewport();
+      const tabBox = await tab.boundingBox();
+      if (width < 900) expect(tabBox?.height).toBeGreaterThanOrEqual(44);
       await page.screenshot({
         path: testInfo.outputPath(`${theme}-${width}.png`),
         fullPage: true,

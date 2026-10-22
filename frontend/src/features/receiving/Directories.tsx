@@ -50,6 +50,8 @@ const labels: Record<DirectoryKind, string> = {
   supplier: "Поставщики",
   warehouse: "Склады",
   payment_method: "Способы оплаты",
+  category: "Категории",
+  expense_category: "Статьи расходов",
 };
 export function Directories({ onExpired }: { onExpired: () => void }) {
   const [kind, setKind] = useState<DirectoryKind>("payment_method");
@@ -108,9 +110,6 @@ export function Directories({ onExpired }: { onExpired: () => void }) {
           {!rows.length && <p>Пока нет записей</p>}
         </Card>
       </div>
-      <p className="field-hint">
-        Покупки и продажи оплачиваются полностью. Долговой учёт не ведётся.
-      </p>
     </div>
   );
 }

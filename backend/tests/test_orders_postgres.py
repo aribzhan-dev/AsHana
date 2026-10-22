@@ -25,7 +25,7 @@ from ashana.modules.inventory.infrastructure.database import batches
 from ashana.modules.inventory.infrastructure.reservations import reservations
 from ashana.modules.notifications.infrastructure.delivery import DeliveryFailed, deliver_one, outbox
 from ashana.modules.orders.application.service import OrderService
-from ashana.modules.orders.domain.models import Choice, Order
+from ashana.modules.orders.domain.models import Choice, Order, short_number
 from ashana.modules.orders.infrastructure.database import (
     PostgresOrderRepository,
     drafts,
@@ -360,12 +360,25 @@ def test_cutoff_expiry_stock_at_pickup_limits_and_http_privacy(order_system: Sys
         s.buy(guest, entry, slot)
 
 
-def test_notification_retry_and_browser_fixture(order_system: System) -> None:
+def test_stale_notifications_are_not_sent_late(order_system: System) -> None:
     s = order_system
     entry, slot, _ = s.setup()
     guest = s.guest()
     checkout = s.buy(guest, entry, slot)
     s.service.mock_payment(guest, checkout.id, uuid4(), "success")
+    later = datetime.now(UTC) + timedelta(days=1)
+    sent: list[str] = []
+    while deliver_one(s.engine, sent.append, later, timedelta(hours=6)):
+        pass
+    assert sent == []
+
+
+def test_notification_retry_and_browser_fixture(order_system: System) -> None:
+    s = order_system
+    entry, slot, _ = s.setup()
+    guest = s.guest()
+    checkout = s.buy(guest, entry, slot)
+    order = s.service.mock_payment(guest, checkout.id, uuid4(), "success")
     now = datetime.now(UTC) + timedelta(days=2)
 
     def failed(message: str) -> None:
@@ -386,6 +399,10 @@ def test_notification_retry_and_browser_fixture(order_system: System) -> None:
         if not deliver_one(s.engine, sent.append, now + timedelta(hours=2)):
             break
     assert sent and any("Новый заказ" in text for text in sent)
+    paid = next(text for text in sent if f"Новый заказ №{short_number(order.id)}" in text)
+    assert "оплата тестовая" in paid and ("В столовой" in paid or "С собой" in paid)
+    assert order.pickup_code
+    assert all(order.pickup_code not in text and str(order.id) not in text for text in sent)
     with s.engine.connect() as connection:
         assert (
             connection.execute(
@@ -409,7 +426,7 @@ def test_payment_creates_order_only_after_success_and_once(order_system: System)
         )
         assert (
             connection.execute(
-                select(outbox.c.id).where(outbox.c.text.contains(str(checkout.id)))
+                select(outbox.c.id).where(outbox.c.subject_id == checkout.id)
             ).first()
             is None
         )
@@ -435,9 +452,7 @@ def test_payment_creates_order_only_after_success_and_once(order_system: System)
         )
         assert (
             connection.execute(
-                select(func.count())
-                .select_from(outbox)
-                .where(outbox.c.text.contains(str(checkout.id)))
+                select(func.count()).select_from(outbox).where(outbox.c.subject_id == checkout.id)
             ).scalar_one()
             == 1
         )
@@ -484,7 +499,7 @@ def test_payment_rollback_and_cancel_race(
     with s.engine.connect() as connection:
         assert (
             connection.execute(
-                select(outbox.c.id).where(outbox.c.text.contains(str(checkout.id)))
+                select(outbox.c.id).where(outbox.c.subject_id == checkout.id)
             ).first()
             is None
         )
@@ -754,6 +769,34 @@ def test_serving_permissions_code_csrf_and_no_code_in_staff_dto(
         )
         assert result.status_code == 200 and result.json()["pickup_code"] is None
     assert s.service.own_orders(guest)[0].status == "completed"
+
+
+def test_staff_order_lookup_for_qr_scanner_hides_code_and_drafts(
+    order_system: System, serving_staff: tuple[str, str]
+) -> None:
+    from ashana.modules.identity.domain.models import IdentityError
+
+    s = order_system
+    guest, order, _ = paid_for_serving(s)
+    cook, cashier = serving_staff
+    found = s.service.staff_order(cashier, order.id)
+    assert found.id == order.id and found.version == order.version
+    draft = s.buy(guest, *s.setup()[:2], 1)
+    with pytest.raises(InventoryError):
+        s.service.staff_order(cashier, draft.id)
+    with pytest.raises(InventoryError):
+        s.service.staff_order(cook, uuid4())
+    with pytest.raises(IdentityError):
+        s.service.staff_order(guest, order.id)
+    with TestClient(create_app(s.settings)) as client:
+        response = client.get(f"/api/v1/orders/staff/{order.id}")
+        assert response.status_code == 401
+        client.cookies.set(s.settings.session_cookie, cashier)
+        response = client.get(f"/api/v1/orders/staff/{order.id}")
+        assert response.status_code == 200
+        assert response.json()["id"] == str(order.id)
+        assert response.json()["pickup_code"] is None
+        assert client.get(f"/api/v1/orders/staff/{draft.id}").status_code == 404
 
 
 def test_serving_suspended_and_expired_batches_never_leave_stock(order_system: System) -> None:

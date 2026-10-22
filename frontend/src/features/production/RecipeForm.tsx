@@ -95,6 +95,8 @@ export function RecipeForm({
             purchase_price_minor: 0,
             sale_price_minor: 0,
             version: 1,
+            always_on_menu: false,
+            image: "",
           })) || [];
         setRaw([
           ...r,

@@ -6,6 +6,7 @@ from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.infrastructure.database import PostgresIdentityRepository
 from ashana.modules.inventory.application.service import InventoryService
 from ashana.modules.inventory.infrastructure.database import PostgresInventoryUnitOfWork
+from ashana.modules.inventory.infrastructure.images import normalize_photo
 
 
 def inventory_service(
@@ -17,4 +18,8 @@ def inventory_service(
             principal.require("inventory.writeoff" if cashier else "inventory.manage")
         return principal.user.id
 
-    return InventoryService(lambda: PostgresInventoryUnitOfWork(engine, authorize), cashier=cashier)
+    return InventoryService(
+        lambda: PostgresInventoryUnitOfWork(engine, authorize),
+        cashier=cashier,
+        photos=normalize_photo,
+    )

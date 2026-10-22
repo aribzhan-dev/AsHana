@@ -72,6 +72,12 @@ export function publicEntry(value: unknown): PublicEntry {
   instant(v.starts_at);
   instant(v.ends_at);
   integer(v.available, 1);
+  // Only our own media path is ever rendered as an image source.
+  if (
+    typeof v.image_url !== "string" ||
+    !/^\/api\/v1\/media\/menu\/[0-9a-f-]{36}\?v=[0-9a-f]{16}$/.test(v.image_url)
+  )
+    v.image_url = "";
   return v as PublicEntry;
 }
 function menu(value: unknown): PublicMenu {
@@ -88,6 +94,9 @@ const write = (path: string, body: unknown, key: string, method = "POST") =>
     operation,
   );
 export const catalogApi = {
+  // Adds always-on-menu goods to open periods; needs catalog.manage.
+  syncPermanent: (key: string) =>
+    request("/catalog/permanent/sync", "POST", {}, { "Idempotency-Key": key }),
   menu: (offset = 0) =>
     request(`/catalog/menu?upcoming=true&offset=${offset}&limit=20`).then(menu),
   periods: (day: string, offset = 0) =>

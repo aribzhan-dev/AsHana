@@ -18,6 +18,7 @@ const user: Staff = {
 it("обзор показывает точные суммы и нулевые продажи, сессии отсутствуют", async () => {
   vi.spyOn(reportsApi, "dashboard").mockResolvedValue({
     generated_at: "2026-10-21T12:00:00Z",
+    hours: [],
     totals: {
       paid_minor: "90071992547409931",
       issued_minor: "100",

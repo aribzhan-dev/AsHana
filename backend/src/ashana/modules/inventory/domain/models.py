@@ -63,6 +63,8 @@ class Item:
     purchase_price_minor: int = 0
     sale_price_minor: int = 0
     version: int = 1
+    always_on_menu: bool = False
+    image: str = ""
 
     @classmethod
     def new(
@@ -74,6 +76,7 @@ class Item:
         category: str = "",
         purchase_price_minor: int = 0,
         sale_price_minor: int = 0,
+        always_on_menu: bool = False,
     ) -> "Item":
         allowed = {"raw": {"kg", "l"}, "purchased": {"pcs"}, "prepared": {"pcs", "portion"}}
         if kind not in allowed or unit not in allowed[kind]:
@@ -89,6 +92,11 @@ class Item:
         ):
             if type(price) is not int or not 0 <= price <= 999999999999:
                 raise invalid(field, "Цена должна быть от 0 до 9999999999,99 ₸")
+        # Only bought-in goods stay on sale while in stock; cooked food follows menu periods.
+        if always_on_menu and (kind != "purchased" or not sale_price_minor):
+            raise invalid(
+                "always_on_menu", "Постоянно в меню может быть покупной товар с ценой продажи"
+            )
         return cls(
             uuid4(),
             text_value(name, "name", 100),
@@ -98,6 +106,7 @@ class Item:
             category,
             purchase_price_minor,
             sale_price_minor,
+            always_on_menu=always_on_menu,
         )
 
 
@@ -178,6 +187,7 @@ class DirectoryEntry:
     id: UUID
     kind: str
     name: str
+    commission_bp: int = 0
 
 
 @dataclass(frozen=True)
@@ -207,3 +217,18 @@ class Invoice:
     supplier_name: str = ""
     warehouse_name: str = ""
     payment_method_name: str = ""
+    paid_on_receipt_minor: int = 0
+    # Paid on receipt plus later supplier payments; the rest of total_minor is debt.
+    paid_minor: int = 0
+
+
+@dataclass(frozen=True)
+class InvoicePayment:
+    id: UUID
+    invoice_id: UUID
+    amount_minor: int
+    payment_method_id: UUID
+    note: str
+    actor_id: UUID
+    paid_at: datetime
+    created_at: datetime

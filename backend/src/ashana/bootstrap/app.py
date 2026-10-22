@@ -13,6 +13,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from ashana.bootstrap.catalog import catalog_service
 from ashana.bootstrap.database import create_database_engine, database_is_ready
 from ashana.bootstrap.errors import ErrorResponse, error_response, register_error_handlers
+from ashana.bootstrap.finance import finance_service
 from ashana.bootstrap.inventory import inventory_service
 from ashana.bootstrap.order_worker import order_worker
 from ashana.bootstrap.orders import order_service
@@ -20,7 +21,9 @@ from ashana.bootstrap.pos import pos_service
 from ashana.bootstrap.production import production_service
 from ashana.bootstrap.reporting import reporting_service
 from ashana.bootstrap.settings import Settings
+from ashana.modules.catalog.presentation.http import media as media_router
 from ashana.modules.catalog.presentation.http import router as catalog_router
+from ashana.modules.finance.presentation.http import router as finance_router
 from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.infrastructure.database import PostgresIdentityUnitOfWork
 from ashana.modules.identity.infrastructure.security import ArgonPasswords, KazakhstanMobilePhones
@@ -30,6 +33,9 @@ from ashana.modules.notifications.infrastructure.delivery import TelegramSender
 from ashana.modules.orders.presentation.http import router as orders_router
 from ashana.modules.pos.presentation.http import router as pos_router
 from ashana.modules.production.presentation.http import router as production_router
+from ashana.modules.realtime.application.hub import Hub
+from ashana.modules.realtime.infrastructure.listener import listen
+from ashana.modules.realtime.presentation.ws import router as realtime_router
 from ashana.modules.reporting.presentation.http import router as reporting_router
 
 logger = logging.getLogger("ashana")
@@ -72,6 +78,7 @@ def create_app(
         app.state.inventory = inventory_service(engine, app.state.identity)
         app.state.cash_stock = inventory_service(engine, app.state.identity, cashier=True)
         app.state.production = production_service(engine, app.state.identity)
+        app.state.finance = finance_service(engine, app.state.identity)
         app.state.readiness_probe = lambda: database_is_ready(engine)
         sender = (
             TelegramSender(
@@ -85,13 +92,16 @@ def create_app(
             if configured.environment != "test"
             else None
         )
+        app.state.hub = Hub()
+        listener = asyncio.create_task(listen(configured, app.state.hub))
         try:
             yield
         finally:
-            if worker:
-                worker.cancel()
-                with suppress(asyncio.CancelledError):
-                    await worker
+            for task in (worker, listener):
+                if task:
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
             engine.dispose()
 
     app = FastAPI(
@@ -111,6 +121,9 @@ def create_app(
     app.include_router(reporting_router)
     app.include_router(inventory_router)
     app.include_router(production_router)
+    app.include_router(realtime_router)
+    app.include_router(finance_router)
+    app.include_router(media_router)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -132,6 +145,7 @@ def create_app(
                 "/api/v1/orders",
                 "/api/v1/pos",
                 "/api/v1/reports",
+                "/api/v1/finance",
             )
         ):
             response.headers["Cache-Control"] = "no-store"

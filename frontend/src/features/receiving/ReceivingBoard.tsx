@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import {
   receivingApi,
   type Directory,
-  type DirectoryKind,
+  type PurchaseKind,
   type Invoice,
   type InvoiceInput,
 } from "../../shared/api/receiving";
@@ -51,7 +51,7 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
   const [directories, setDirectories] = useState<
-    Record<DirectoryKind, Directory[]>
+    Record<PurchaseKind, Directory[]>
   >({ supplier: [], warehouse: [], payment_method: [] });
   const [supplier, setSupplier] = useState(""),
     [warehouse, setWarehouse] = useState(
@@ -61,9 +61,11 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
   const [number, setNumber] = useState(""),
     [received, setReceived] = useState(almatyNow()),
     [expenses, setExpenses] = useState("0"),
+    [paidNow, setPaidNow] = useState(""),
+    [paying, setPaying] = useState<Invoice | null>(null),
     [note, setNote] = useState(""),
     [rows, setRows] = useState<Row[]>([fresh()]);
-  const [create, setCreate] = useState<DirectoryKind | "product" | null>(null);
+  const [create, setCreate] = useState<PurchaseKind | "product" | null>(null);
   const op = useOperation(onExpired);
   useEffect(() => {
     let active = true;
@@ -108,6 +110,8 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
       0,
     ),
     extra = costMinor(expenses);
+  // Empty means paid in full; a smaller amount leaves a supplier debt.
+  const paid = paidNow.trim() ? costMinor(paidNow) : goods + (extra || 0);
   async function submit() {
     const time = almatyInstant(received);
     if (
@@ -117,6 +121,8 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
       !method ||
       !time ||
       extra === undefined ||
+      paid === undefined ||
+      paid > goods + extra ||
       rows.some(
         (r) =>
           !r.item_id ||
@@ -129,7 +135,7 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
       )
     ) {
       op.setError(
-        "Заполните товары, количество, цену и срок годности. Проверьте расходы и дату прихода.",
+        "Заполните товары, количество, цену и срок годности. Проверьте расходы, оплату и дату прихода.",
       );
       return;
     }
@@ -140,6 +146,7 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
       payment_method_id: method,
       received_at: time,
       expenses_minor: extra,
+      paid_minor: paid,
       note,
       lines: rows.map((r) => ({
         item_id: r.item_id,
@@ -154,11 +161,12 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
       setRows([fresh()]);
       setNumber("");
       setExpenses("0");
+      setPaidNow("");
       setNote("");
       setAttempt((n) => n + 1);
     }
   }
-  const selected: Record<DirectoryKind, string> = {
+  const selected: Record<PurchaseKind, string> = {
     supplier,
     warehouse,
     payment_method: method,
@@ -338,17 +346,24 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
                   onChange={(e) => setNote(e.target.value)}
                 />
               </div>
+              <Input
+                label="Оплачено сейчас, ₸"
+                inputMode="decimal"
+                placeholder={`Полностью — ${stockMoney(goods + (extra || 0))}`}
+                value={paidNow}
+                onChange={(e) => setPaidNow(e.target.value)}
+                hint="Оставьте пустым, если оплачено полностью. Остаток станет долгом поставщику."
+              />
               <div className="invoice-totals">
                 <span>Товары: {stockMoney(goods)}</span>
                 <span>Расходы: {stockMoney(extra || 0)}</span>
-                <strong>
-                  Итого оплачено: {stockMoney(goods + (extra || 0))}
-                </strong>
+                <strong>Итого: {stockMoney(goods + (extra || 0))}</strong>
+                {paid !== undefined && paid < goods + (extra || 0) && (
+                  <strong className="debt">
+                    Долг поставщику: {stockMoney(goods + (extra || 0) - paid)}
+                  </strong>
+                )}
               </div>
-              <p className="field-hint">
-                Цена указана за выбранную единицу. Сумма строки округляется до
-                тиына. Накладная проводится целиком после полной оплаты.
-              </p>
             </fieldset>
             {op.error && <Alert>{op.error}</Alert>}
             <div className="button-row">
@@ -380,7 +395,19 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
                     {stockDate(i.received_at)} · {i.warehouse_name}
                   </p>
                 </div>
-                <strong>{stockMoney(i.total_minor)}</strong>
+                <div className="invoice-amount">
+                  <strong>{stockMoney(i.total_minor)}</strong>
+                  {i.debt_minor > 0 && (
+                    <small className="debt">
+                      долг {stockMoney(i.debt_minor)}
+                    </small>
+                  )}
+                </div>
+                {i.debt_minor > 0 && (
+                  <Button variant="secondary" onClick={() => setPaying(i)}>
+                    Оплатить долг
+                  </Button>
+                )}
                 <DetailsButton title={`Накладная № ${i.number}`}>
                   <p>
                     {i.supplier_name} · {i.warehouse_name} ·{" "}
@@ -396,11 +423,26 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
                   <p>Товары: {stockMoney(i.goods_minor)}</p>
                   <p>Расходы: {stockMoney(i.expenses_minor)}</p>
                   <strong>Итого: {stockMoney(i.total_minor)}</strong>
+                  <p>
+                    Оплачено: {stockMoney(i.paid_minor)}
+                    {i.debt_minor > 0 && ` · долг ${stockMoney(i.debt_minor)}`}
+                  </p>
                   <p>{i.note}</p>
                 </DetailsButton>
               </Card>
             ))}
           </div>
+          {paying && (
+            <PayDebtDialog
+              invoice={paying}
+              methods={directories.payment_method}
+              onClose={() => setPaying(null)}
+              onDone={() => {
+                setPaying(null);
+                setAttempt((n) => n + 1);
+              }}
+            />
+          )}
           {!invoices.length && (
             <p>
               Накладных пока нет. Старые одиночные приходы сохранены в истории
@@ -483,5 +525,105 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
         </Dialog>
       )}
     </div>
+  );
+}
+
+function PayDebtDialog({
+  invoice,
+  methods,
+  onClose,
+  onDone,
+}: {
+  invoice: Invoice;
+  methods: Directory[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [amount, setAmount] = useState(String(invoice.debt_minor / 100)),
+    [method, setMethod] = useState(methods[0]?.id ?? ""),
+    [paidAt, setPaidAt] = useState(almatyNow()),
+    [note, setNote] = useState("");
+  const op = useOperation(() => window.location.reload());
+  async function submit() {
+    const minor = costMinor(amount),
+      time = almatyInstant(paidAt);
+    if (!minor || minor > invoice.debt_minor) {
+      op.setFields({ amount_minor: "Сумма от 0,01 ₸ до суммы долга" });
+      return;
+    }
+    if (!method || !time) {
+      op.setError("Выберите способ оплаты и дату");
+      return;
+    }
+    const body = {
+      amount_minor: minor,
+      payment_method_id: method,
+      paid_at: time,
+      note,
+    };
+    if (
+      await op.run({ invoice: invoice.id, ...body }, (key) =>
+        receivingApi.pay(invoice.id, body, key),
+      )
+    )
+      onDone();
+  }
+  return (
+    <Dialog
+      open
+      title={`Оплата долга · № ${invoice.number}`}
+      busy={op.busy}
+      onClose={onClose}
+    >
+      <form
+        className="form-stack"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <p>
+          {invoice.supplier_name}: долг{" "}
+          <strong>{stockMoney(invoice.debt_minor)}</strong>
+        </p>
+        <Input
+          label="Сумма, ₸"
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          error={op.fields.amount_minor}
+          required
+        />
+        <Select
+          label="Способ оплаты"
+          value={method}
+          onChange={(e) => setMethod(e.target.value)}
+        >
+          {methods.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </Select>
+        <Input
+          label="Дата оплаты (Астана)"
+          type="datetime-local"
+          value={paidAt}
+          onChange={(e) => setPaidAt(e.target.value)}
+          error={op.fields.paid_at}
+        />
+        <Input
+          label="Комментарий"
+          maxLength={200}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        {op.error && <Alert>{op.error}</Alert>}
+        <Button type="submit" loading={op.busy}>
+          Оплатить
+        </Button>
+      </form>
+    </Dialog>
   );
 }

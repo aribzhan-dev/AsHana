@@ -1,7 +1,7 @@
 import hashlib
 import json
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -15,10 +15,11 @@ from ashana.modules.inventory.domain.models import (
     Result,
     change_quantity,
     invalid,
+    text_value,
 )
 from ashana.modules.orders.domain.models import Choice, validate_choices
 from ashana.modules.pos.application.ports import PosUnitOfWork
-from ashana.modules.pos.domain.models import Sale, SaleLine
+from ashana.modules.pos.domain.models import Sale, SaleLine, SaleReturn
 
 
 class PosService:
@@ -185,6 +186,124 @@ class PosService:
             uow.stock.remember(actor, "pos_sale", key, payload, Result(sale.id, 1), now)
             uow.commit()
             return sale
+
+    def returns(self, token: str, sale_id: UUID) -> list[SaleReturn]:
+        with self.uow() as uow:
+            uow.authorize(token)
+            if not uow.repository.get(sale_id):
+                raise InventoryError("NOT_FOUND", "Продажа не найдена")
+            return uow.repository.returns(sale_id)
+
+    def return_sale(
+        self,
+        token: str,
+        key: UUID,
+        sale_id: UUID,
+        quantities: dict[UUID, int],
+        reason: str,
+        disposition: str,
+    ) -> SaleReturn:
+        """Refund part of a counter sale; goods go back on sale or are written off."""
+        if disposition not in ("restock", "write_off"):
+            raise invalid("disposition", "Выберите: вернуть на склад или списать")
+        reason = text_value(reason, "reason", 200)
+        if not quantities or any(type(q) is not int or q < 0 for q in quantities.values()):
+            raise invalid("lines", "Укажите количество для возврата")
+        quantities = {k: q for k, q in quantities.items() if q}
+        if not quantities:
+            raise invalid("lines", "Укажите количество для возврата")
+        payload = hashlib.sha256(
+            json.dumps(
+                [
+                    str(sale_id),
+                    sorted((str(k), q) for k, q in quantities.items()),
+                    reason,
+                    disposition,
+                ]
+            ).encode()
+        ).hexdigest()
+        with self.uow() as uow:
+            actor = uow.authorize(token, "pos.refund")
+            replay = uow.stock.replay(actor, "pos_return", key, payload)
+            if replay:
+                saved = uow.repository.get_return(replay.subject_id)
+                assert saved is not None
+                return saved
+            sale = uow.repository.get(sale_id, lock=True)
+            if not sale or sale.outcome != "success":
+                raise InventoryError("NOT_FOUND", "Оплаченная продажа не найдена")
+            returned: dict[UUID, int] = {}
+            for previous in uow.repository.returns(sale_id):
+                for line in previous.lines:
+                    returned[line.entry_id] = returned.get(line.entry_id, 0) + line.quantity
+            sold = {line.entry_id: line for line in sale.lines}
+            lines: list[SaleLine] = []
+            for entry_id, quantity in sorted(quantities.items(), key=lambda pair: pair[0]):
+                sold_line = sold.get(entry_id)
+                if not sold_line:
+                    raise invalid("lines", "Позиции нет в этой продаже")
+                if quantity > sold_line.quantity - returned.get(entry_id, 0):
+                    raise InventoryError(
+                        "RETURN_LIMIT", f"Нельзя вернуть больше проданного: {sold_line.name}"
+                    )
+                lines.append(replace(sold_line, quantity=quantity))
+            now = self.clock()
+            if disposition == "restock":
+                # Put goods back into the batches the sale consumed, newest first.
+                consumed = uow.repository.sale_batches(sale_id)
+                for line in lines:
+                    remaining = line.quantity
+                    for batch_id, _ in consumed:
+                        batch = uow.stock.batch(batch_id, lock=True)
+                        if (
+                            not batch
+                            or batch.item_id != line.item_id
+                            or batch.status != "active"
+                            or batch.expires_at <= now
+                        ):
+                            continue
+                        updated = change_quantity(batch, Decimal(remaining))
+                        uow.stock.save_batch(updated)
+                        uow.stock.add_movement(
+                            Movement(
+                                uuid4(),
+                                batch.id,
+                                "pos_return",
+                                Decimal(remaining),
+                                batch.on_hand,
+                                updated.on_hand,
+                                f"Возврат продажи {sale_id}: {reason}",
+                                actor,
+                                now,
+                                updated.version,
+                                batch.status,
+                                updated.status,
+                            )
+                        )
+                        uow.stock.audit(actor, "pos_return", batch.id, now)
+                        remaining = 0
+                        break
+                    if remaining:
+                        raise InventoryError(
+                            "RETURN_BATCH_CLOSED",
+                            f"Партия «{line.name}» закрыта или истекла. "
+                            "Оформите возврат со списанием",
+                        )
+            sale_return = SaleReturn(
+                uuid4(),
+                sale_id,
+                actor,
+                now,
+                reason,
+                disposition,
+                sum(line.quantity * line.price_minor for line in lines),
+                tuple(lines),
+            )
+            uow.repository.add_return(sale_return)
+            uow.stock.audit(actor, "pos_return", sale_return.id, now)
+            uow.stock.remember(actor, "pos_return", key, payload, Result(sale_return.id, 1), now)
+            uow.commit()
+            return sale_return
 
     def payment_methods(self, token: str) -> list[DirectoryEntry]:
         with self.uow() as uow:

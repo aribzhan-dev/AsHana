@@ -49,6 +49,10 @@ class OrderService:
             raise IdentityError("UNAUTHENTICATED", "Доступ гостя истёк. Откройте меню заново")
         return guest
 
+    def guest_id(self, token: str) -> UUID:
+        with self.uow() as uow:
+            return self._guest(uow, token)
+
     def start_guest(self, token: str, address: str = "local") -> str | None:
         with self.uow() as uow:
             now = self.clock()
@@ -138,11 +142,25 @@ class OrderService:
             uow.commit()
             return slot.id
 
-    def checkout(self, token: str, key: UUID, slot_id: UUID, choices: list[Choice]) -> Order:
+    def checkout(
+        self,
+        token: str,
+        key: UUID,
+        slot_id: UUID,
+        choices: list[Choice],
+        dining: str = "here",
+    ) -> Order:
         validate_choices(choices, self.policy.max_portions)
-        payload = fingerprint(
-            [slot_id, sorted((asdict(c) for c in choices), key=lambda c: str(c["entry_id"]))]
-        )
+        if dining not in ("here", "takeaway"):
+            raise InventoryError("VALIDATION_ERROR", "Выберите: в столовой или с собой")
+        parts: list[object] = [
+            slot_id,
+            sorted((asdict(c) for c in choices), key=lambda c: str(c["entry_id"])),
+        ]
+        # Older clients never sent the option; keep their replay fingerprints unchanged.
+        if dining != "here":
+            parts.append(dining)
+        payload = fingerprint(parts)
         self.expire()
         with self.uow() as uow:
             guest = self._guest(uow, token, lock=True)
@@ -239,6 +257,7 @@ class OrderService:
                 tuple(lines),
                 slot.starts_at,
                 slot.ends_at,
+                dining=dining,
             )
             uow.repository.add_order(order)
             for batch_id, amount in allocations:
@@ -413,6 +432,15 @@ class OrderService:
         with self.uow() as uow:
             uow.authorize(token, "kitchen.read")
             return self._issues(uow, uow.repository.orders(None, offset, limit, state))
+
+    def staff_order(self, token: str, id: UUID) -> Order:
+        self.expire()
+        with self.uow() as uow:
+            uow.authorize(token, "kitchen.read")
+            order = uow.repository.order(id)
+            if not order or order.status == "pending_payment":
+                raise InventoryError("NOT_FOUND", "Заказ не найден")
+            return self._issues(uow, [order])[0]
 
     def _issues(self, uow: OrderUnitOfWork, orders: list[Order]) -> list[Order]:
         affected = uow.reservations.troubled([order.id for order in orders], self.clock())

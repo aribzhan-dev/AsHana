@@ -54,7 +54,10 @@ export function ReportsPage() {
           <div className="page-heading">
             <h1>Отчёты</h1>
           </div>
-          <ReportBoard onExpired={expire} />
+          <ReportBoard
+            onExpired={expire}
+            finance={user.permissions.includes("finance.manage")}
+          />
         </>
       )}
     </PageShell>

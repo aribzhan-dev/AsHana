@@ -32,14 +32,18 @@ export async function request(
         throw new ApiError(0, t.genericError);
       headers["X-CSRF-Token"] = csrf.csrf_token;
     }
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    // Files (photos) are sent as raw bytes with their own type; everything else is JSON.
+    const binary = body instanceof Blob;
+    if (binary) headers["Content-Type"] = body.type;
+    else if (body !== undefined) headers["Content-Type"] = "application/json";
     const response = await fetch(`/api/v1${path}`, {
       method,
       credentials: "same-origin",
       cache: "no-store",
       headers,
       signal: controller.signal,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body:
+        body === undefined ? undefined : binary ? body : JSON.stringify(body),
     });
     if (!response.ok) {
       const error: unknown = await response.json().catch(() => null);

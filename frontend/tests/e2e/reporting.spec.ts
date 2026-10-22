@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { selectTheme } from "./theme-helper";
 test.use({ trace: "off", screenshot: "off", video: "off" });
-test("отчёты: demo отдельно, четыре вида, фильтры и адаптивность", async ({
+test("отчёты: меню видов, сводка, таблицы и адаптивность", async ({
   page,
 }, testInfo) => {
   test.setTimeout(120000);
@@ -12,22 +12,39 @@ test("отчёты: demo отдельно, четыре вида, фильтры
     .getByLabel("Пароль", { exact: true })
     .fill(process.env.ASHANA_TEST_PASSWORD!);
   await page.getByRole("button", { name: "Войти", exact: true }).click();
-  const results = page.getByRole("region", { name: "Результат отчёта" });
-  await expect(results).toBeVisible();
-  await expect(results).toContainText("Поступления");
-  await page.getByLabel("Режим оплаты").selectOption("real");
-  await page.getByRole("button", { name: "Показать отчёт" }).click();
-  await expect(results).toContainText("реальных поступлений нет");
-  await expect(results).toContainText("Найдено строк: 0");
-  for (const kind of ["production", "stock", "writeoffs"]) {
-    await page.getByLabel("Вид отчёта").selectOption(kind);
-    await page.getByRole("button", { name: "Показать отчёт" }).click();
-    await expect(results).toBeVisible();
-    await expect(results.locator(".compact-record").first()).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Виды отчётов" });
+  await expect(page.locator(".kpi-grid")).toContainText("Выручка");
+  await expect(page.locator(".hour-chart")).toBeVisible();
+  for (const name of [
+    "Продажи",
+    "ТОП товаров",
+    "ABC-анализ",
+    "Не продавались",
+    "Возвраты",
+    "Инвентаризация",
+    "Списания",
+    "Производство",
+    "Расходы и закупки",
+    "Кассовая книга",
+  ]) {
+    await nav.getByRole("button", { name, exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".report-table, .empty-state").first(),
+    ).toBeVisible();
   }
-  await page.getByLabel("Вид отчёта").selectOption("stock");
-  await page.getByRole("button", { name: "Показать отчёт" }).click();
-  await expect(results).toContainText("не исторический");
+  for (const name of ["Остатки сейчас", "Долги поставщикам"]) {
+    await nav.getByRole("button", { name, exact: true }).click();
+    await expect(page.getByLabel("С даты (Астана)")).toHaveCount(0);
+    await expect(
+      page.locator(".report-table, .empty-state").first(),
+    ).toBeVisible();
+  }
+  await nav.getByRole("button", { name: "Продажи", exact: true }).click();
+  await page.getByRole("button", { name: "30 дней", exact: true }).click();
+  await expect(page.locator(".report-table").first()).toBeVisible();
   for (const width of [360, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (const theme of ["light", "dark"]) {
@@ -44,5 +61,7 @@ test("отчёты: demo отдельно, четыре вида, фильтры
     }
   }
   await page.reload();
-  await expect(results).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Продажи", exact: true }),
+  ).toBeVisible();
 });

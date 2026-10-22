@@ -53,10 +53,6 @@ export function StaffOrdersPage() {
           <div className="page-heading">
             <h1>Входящие заказы</h1>
           </div>
-          <p>
-            Готовые блюда порционируют по заказу. Ближайшее время получения —
-            первым.
-          </p>
           <OrderList staff permissions={user.permissions} />
           {user.permissions.includes("catalog.manage") && (
             <details className="card">

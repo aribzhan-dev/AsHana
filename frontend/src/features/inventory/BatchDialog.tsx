@@ -99,7 +99,6 @@ export function BatchDialog({
         </strong>{" "}
         · {t.version} {batch.version}
       </p>
-      <p className="field-hint">{t.stockHint}</p>
       <form
         noValidate
         onSubmit={(e) => void submit(e)}

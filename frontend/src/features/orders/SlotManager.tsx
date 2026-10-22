@@ -126,11 +126,6 @@ function SlotForm({
           <span>Принимать заказы в этот слот</span>
         </label>
       </fieldset>
-      <p className="field-hint">
-        Оплата завершается за {config.cutoff_minutes} минут до начала.
-        Оформление начинается ещё на {config.reservation_seconds / 60} минут
-        раньше. В занятом слоте время менять нельзя.
-      </p>
       {op.error && <Alert>{op.error}</Alert>}
       <Button type="submit" loading={op.busy}>
         Сохранить слот

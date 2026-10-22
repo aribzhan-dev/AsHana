@@ -170,6 +170,7 @@ it("обновление при возврате в окно убирает ус
           starts_at: period.starts_at,
           ends_at: period.ends_at,
           available: 8,
+          image_url: "",
         },
       ],
     })

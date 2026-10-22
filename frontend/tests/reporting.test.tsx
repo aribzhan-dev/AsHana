@@ -32,28 +32,32 @@ it("суммы отчёта не теряют тиыны выше безопас
     parseReport({ ...data, totals: { paid_minor: "1.5" } }),
   ).toThrow();
 });
-it("режим и даты применяются явно; ошибочный диапазон не отправляется", async () => {
+it("отчёт открывается из меню, даты проверяются до запроса", async () => {
+  window.location.hash = "#sales";
   vi.spyOn(reportsApi, "options").mockResolvedValue([]);
   const load = vi.spyOn(reportsApi, "read").mockResolvedValue(data);
   render(<ReportBoard onExpired={vi.fn()} />);
-  await screen.findByText("Плов");
-  await userEvent.selectOptions(screen.getByLabelText("Режим оплаты"), "real");
-  expect(load).toHaveBeenCalledTimes(1);
-  await userEvent.click(screen.getByRole("button", { name: "Показать отчёт" }));
-  await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
-  expect(load.mock.calls[1]![1].mode).toBe("real");
+  expect(await screen.findByRole("cell", { name: "Плов" })).toBeInTheDocument();
+  expect(screen.getAllByText("123,45 ₸").length).toBeGreaterThan(0);
+  const calls = load.mock.calls.length;
   const end = screen.getByLabelText("По дату включительно");
   await userEvent.clear(end);
-  await userEvent.click(screen.getByRole("button", { name: "Показать отчёт" }));
-  expect(load).toHaveBeenCalledTimes(2);
+  await userEvent.type(end, "2000-01-01");
   await screen.findByText(/Укажите корректные даты/);
+  expect(load).toHaveBeenCalledTimes(calls);
+  await userEvent.click(screen.getByRole("button", { name: "7 дней" }));
+  await userEvent.click(screen.getByRole("button", { name: "ABC-анализ" }));
+  await waitFor(() => expect(load.mock.lastCall?.[0]).toBe("abc"));
 });
-it("остаток обозначен текущим; даты и денежные фильтры отключены", async () => {
+it("остатки и долги не зависят от дат", async () => {
+  window.location.hash = "#stock";
   vi.spyOn(reportsApi, "options").mockResolvedValue([]);
-  vi.spyOn(reportsApi, "read").mockResolvedValue(data);
+  vi.spyOn(reportsApi, "read").mockResolvedValue({ ...data, kind: "stock" });
   render(<ReportBoard onExpired={vi.fn()} />);
-  await screen.findByText("Плов");
-  await userEvent.selectOptions(screen.getByLabelText("Вид отчёта"), "stock");
-  expect(screen.getByLabelText("С даты (Астана)")).toBeDisabled();
-  expect(screen.queryByLabelText("Режим оплаты")).not.toBeInTheDocument();
+  await screen.findByRole("cell", { name: "Плов" });
+  expect(screen.queryByLabelText("С даты (Астана)")).not.toBeInTheDocument();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Долги поставщикам" }),
+  );
+  expect(screen.queryByLabelText("С даты (Астана)")).not.toBeInTheDocument();
 });

@@ -81,3 +81,35 @@ REPORTS-01: 126 backend (52 PostgreSQL integration), 49 Vitest, 29 Chromium E2E.
 единицы/пересчёт/производство, READ ONLY/права и мобильно-тематическая матрица проверены.
 Первый интеграционный прогон обнаружил двойной подсчёт отмен, итоговый исправленный прошёл.
 [Актуальный этап](../../tasks/current-sprint.md).
+
+WORKSPACE-01: 130 backend (56 PostgreSQL integration), 53 Vitest, 30 Chromium E2E.
+Роли в БД, optimistic version, отзыв сессий при изменении прав, аудит, обзор с точными итогами.
+[Результаты](../../tasks/WORKSPACE-01-results.md).
+
+OPERATIONS-01: 132 backend (58 PostgreSQL integration), 55 Vitest, 31 Chromium E2E.
+Атомарная накладная, повтор, откат, точные суммы, штрихкоды, фильтры складов, списание на кассе без резервов.
+[Результаты](../../tasks/OPERATIONS-01-results.md).
+
+PRODUCTS-02: 133 backend (59 PostgreSQL integration), 56 Vitest, 31 Chromium E2E.
+Изменение карточки товара, повтор, stale-версия, отрицательная цена, имя автора, права кассира.
+[Результаты](../../tasks/PRODUCTS-02-results.md).
+
+DESIGN-02: 134 backend, 60 Vitest, 32 Chromium E2E (QR-выдача, новый дизайн).
+[Результаты](../../tasks/DESIGN-02-results.md).
+
+OPERATIONS-02: 140 backend, 61 Vitest, 32 Chromium E2E. Возврат на кассе и долги с гонками,
+категории, постоянные товары, «с собой», тестовая карта, новые отчёты.
+[Результаты](../../tasks/OPERATIONS-02-results.md).
+
+LIVE-01: 144 backend, 63 Vitest, 33 Chromium E2E. WebSocket с PostgreSQL NOTIFY: права, Origin,
+сессия, отсутствие кода получения, кухня видит заказ без перезагрузки.
+[Результаты](../../tasks/LIVE-01-results.md).
+
+TELEGRAM-01: 146 backend. Формат сообщений без персональных данных, пропуск старых событий.
+
+FINANCE-01: 157 backend, 64 Vitest, 34 Chromium и 34 WebKit E2E (отдельные стенды). ОПиУ и зарплата,
+гостевой WebSocket, фото, гонки под нагрузкой (нашли блокировку пула), резервная копия.
+[Результаты](../../tasks/current-sprint.md).
+
+Всё ещё не проверены: реальный платёжный провайдер (не подключается), живой Telegram,
+Firefox (не запускается на macOS 27.0.1), полный WCAG, пилот в столовой.

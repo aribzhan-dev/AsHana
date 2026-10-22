@@ -83,7 +83,9 @@ test("меню: черновик, публикация готового оста
   });
   const menu = await guest.newPage();
   await menu.goto("/");
-  await expect(menu.getByRole("status")).toContainText("Меню обновлено:");
+  await expect(
+    menu.locator('.food-grid, .empty-state:not([role="status"])').first(),
+  ).toBeVisible();
   await expect(
     menu.getByRole("heading", { name: "Сок для меню браузера", exact: true }),
   ).toHaveCount(0);
@@ -94,8 +96,8 @@ test("меню: черновик, публикация готового оста
   await dialog.getByLabel("Опубликовать период").check();
   await dialog.getByRole("button", { name: "Сохранить период" }).click();
   await expect(dialog).not.toBeVisible();
-  await menu.getByRole("button", { name: "Обновить меню" }).click();
-  const publicCard = menu.locator(".catalog-card").filter({
+  await menu.reload();
+  const publicCard = menu.locator(".food-card").filter({
     has: menu.getByRole("heading", {
       name: "Сок для меню браузера",
       exact: true,
@@ -103,11 +105,20 @@ test("меню: черновик, публикация готового оста
   });
   await findCard(menu, publicCard);
   await expect(publicCard).toContainText("123,45");
-  await expect(publicCard).toContainText("8 шт");
   await expect(publicCard).toContainText("Бутылка 0,5 л");
   await expect(
-    publicCard.getByRole("button", { name: "В корзину" }),
+    publicCard.getByRole("button", {
+      name: "Добавить в корзину: Сок для меню браузера",
+    }),
   ).toBeVisible();
+  await publicCard
+    .getByRole("button", { name: "Подробнее: Сок для меню браузера" })
+    .click();
+  await expect(menu.getByRole("dialog")).toContainText("8 шт");
+  await menu
+    .getByRole("dialog")
+    .getByRole("button", { name: "Закрыть", exact: true })
+    .click();
   for (const width of [360, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await menu.setViewportSize({ width, height: 900 });
@@ -152,15 +163,18 @@ test("меню: черновик, публикация готового оста
   await dialog.getByLabel("Цена, ₸").fill("150,99");
   await dialog.getByRole("button", { name: "Сохранить позицию" }).click();
   await expect(dialog).not.toBeVisible();
-  await menu.getByRole("button", { name: "Обновить меню" }).click();
+  await menu.reload();
+  await findCard(menu, publicCard);
   await expect(publicCard).toContainText("150,99");
   await entry.getByRole("button", { name: "Изменить позицию" }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByLabel("Опубликовать позицию").uncheck();
   await dialog.getByRole("button", { name: "Сохранить позицию" }).click();
   await expect(dialog).not.toBeVisible();
-  await menu.getByRole("button", { name: "Обновить меню" }).click();
-  await expect(menu.getByRole("status")).toContainText("Меню обновлено:");
+  await menu.reload();
+  await expect(
+    menu.locator('.food-grid, .empty-state:not([role="status"])').first(),
+  ).toBeVisible();
   await expect(publicCard).toHaveCount(0);
   expect(
     (

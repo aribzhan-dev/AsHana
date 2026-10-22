@@ -15,6 +15,8 @@ it("накладная отправляет строки и расходы це�
       purchase_price_minor: 0,
       sale_price_minor: 0,
       version: 1,
+      always_on_menu: false,
+      image: "",
       unit: "kg",
     },
   ]);
@@ -22,6 +24,7 @@ it("накладная отправляет строки и расходы це�
   vi.spyOn(receivingApi, "directories").mockImplementation(async (kind) => [
     {
       kind,
+      commission_bp: 0,
       id:
         kind === "supplier"
           ? "supplier"

@@ -15,7 +15,7 @@ from ashana.modules.reporting.domain.models import (
 )
 
 # Explicit read projections: reporting never imports or mutates another module's ORM tables.
-SALES = """
+SALES_BASE = """
 WITH events AS (
     SELECT d.lines, e.kind, e.created_at, COALESCE(o.mode, 'mock') AS mode,
            'online' AS channel, s.period_id
@@ -25,6 +25,9 @@ WITH events AS (
     UNION ALL
     SELECT p.lines, 'pos', p.created_at, p.mode, 'cashier', NULL::uuid
     FROM pos_attempts p WHERE p.outcome='success'
+    UNION ALL
+    SELECT r.lines, 'pos_return', r.created_at, 'mock', 'cashier', NULL::uuid
+    FROM pos_returns r
 ), expanded AS (
     SELECT (line->>'item_id')::uuid AS item_id, line->>'name' AS name,
            line->>'unit' AS unit, (line->>'quantity')::bigint AS quantity,
@@ -34,7 +37,7 @@ WITH events AS (
     LEFT JOIN catalog_entries ce ON ce.id=(line->>'entry_id')::uuid
     WHERE e.created_at>=:start AND e.created_at<:end AND e.mode=:mode
       AND (:channel='all' OR e.channel=:channel)
-), aggregated AS (
+), sales_rows AS (
     SELECT x.item_id, x.name, x.unit, x.channel, x.period_id,
       COALESCE(p.name, 'Без периода') AS period,
       SUM(CASE WHEN kind IN ('confirmed','pos') THEN quantity ELSE 0 END) AS paid_quantity,
@@ -42,15 +45,74 @@ WITH events AS (
       SUM(CASE WHEN kind='cancelled' THEN quantity ELSE 0 END)
         AS cancelled_quantity,
       SUM(CASE WHEN kind='expired' THEN quantity ELSE 0 END) AS expired_quantity,
+      SUM(CASE WHEN kind IN ('paid_cancelled','pos_return') THEN quantity ELSE 0 END)
+        AS returned_quantity,
       SUM(CASE WHEN kind IN ('confirmed','pos') THEN quantity*price ELSE 0 END) AS paid_minor,
       SUM(CASE WHEN kind IN ('completed','pos') THEN quantity*price ELSE 0 END) AS issued_minor,
-      SUM(CASE WHEN kind='paid_cancelled' THEN quantity*price ELSE 0 END) AS refund_minor
+      SUM(CASE WHEN kind IN ('paid_cancelled','pos_return') THEN quantity*price ELSE 0 END)
+        AS refund_minor
     FROM expanded x LEFT JOIN catalog_periods p ON p.id=x.period_id
     WHERE (CAST(:item AS uuid) IS NULL OR x.item_id=CAST(:item AS uuid))
       AND (CAST(:period AS uuid) IS NULL OR x.period_id=CAST(:period AS uuid))
     GROUP BY x.item_id, x.name, x.unit, x.channel, x.period_id, p.name
 )
 """
+SALES = SALES_BASE + ", aggregated AS (SELECT * FROM sales_rows)"
+BY_ITEM = (
+    SALES_BASE
+    + """, by_item AS (
+    SELECT item_id, name, unit, sum(paid_quantity - returned_quantity) AS quantity,
+           sum(paid_minor - refund_minor) AS revenue_minor
+    FROM sales_rows GROUP BY item_id, name, unit
+), ranked AS (
+    SELECT *, sum(revenue_minor) OVER () AS grand,
+      sum(revenue_minor) OVER (ORDER BY revenue_minor DESC, name, item_id) AS running
+    FROM by_item WHERE quantity > 0
+)"""
+)
+TOP = (
+    BY_ITEM
+    + """, aggregated AS (
+    SELECT item_id, name, unit, quantity, revenue_minor,
+      to_char(round(100.0 * revenue_minor / NULLIF(grand, 0), 1), 'FM990.0') AS share
+    FROM ranked
+)"""
+)
+ABC = (
+    BY_ITEM
+    + """, aggregated AS (
+    SELECT item_id, name, unit, revenue_minor,
+      to_char(round(100.0 * revenue_minor / NULLIF(grand, 0), 1), 'FM990.0') AS share,
+      to_char(round(100.0 * running / NULLIF(grand, 0), 1), 'FM990.0') AS cumulative,
+      CASE WHEN 100.0 * (running - revenue_minor) / NULLIF(grand, 0) < 80 THEN 'A'
+           WHEN 100.0 * (running - revenue_minor) / NULLIF(grand, 0) < 95 THEN 'B'
+           ELSE 'C' END AS grade
+    FROM ranked
+)"""
+)
+UNSOLD = (
+    SALES_BASE
+    + """, sold AS (
+    SELECT item_id, sum(paid_quantity) AS quantity FROM sales_rows GROUP BY item_id
+), aggregated AS (
+    SELECT i.id AS item_id, i.name, i.unit,
+      COALESCE(NULLIF(i.category, ''), 'Без категории') AS category,
+      COALESCE((SELECT sum(b.on_hand) FROM inventory_batches b
+                WHERE b.item_id = i.id AND b.status = 'active'), 0) AS on_hand
+    FROM inventory_items i LEFT JOIN sold ON sold.item_id = i.id
+    WHERE i.kind IN ('prepared', 'purchased') AND COALESCE(sold.quantity, 0) = 0
+      AND (CAST(:item AS uuid) IS NULL OR i.id = CAST(:item AS uuid))
+)"""
+)
+RETURNS = (
+    SALES_BASE
+    + """, aggregated AS (
+    SELECT item_id, name, unit,
+      CASE WHEN channel = 'cashier' THEN 'Касса' ELSE 'Сайт' END AS channel,
+      sum(returned_quantity) AS quantity, sum(refund_minor) AS amount_minor
+    FROM sales_rows GROUP BY item_id, name, unit, channel HAVING sum(returned_quantity) > 0
+)"""
+)
 PRODUCTION = """
 WITH aggregated AS (
  SELECT i.id AS item_id, i.name, i.unit, count(*) AS batches, sum(p.actual_yield) AS quantity
@@ -88,11 +150,131 @@ WITH aggregated AS (
  GROUP BY i.id, i.name, i.unit
 )
 """
+INVENTORY = """
+WITH aggregated AS (
+ SELECT m.id AS item_id, i.name, i.unit, m.created_at,
+   to_char(m.created_at AT TIME ZONE 'Asia/Almaty', 'DD.MM.YYYY HH24:MI') AS day_label,
+   m."before" AS before_quantity, m."after" AS after_quantity, m.delta AS difference,
+   m.reason, COALESCE(NULLIF(u.nickname, ''), u.name, 'Сотрудник') AS author
+ FROM inventory_movements m JOIN inventory_batches b ON b.id=m.batch_id
+ JOIN inventory_items i ON i.id=b.item_id LEFT JOIN identity_users u ON u.id=m.actor_id
+ WHERE m.action='count' AND m.created_at>=:start AND m.created_at<:end
+ AND (CAST(:item AS uuid) IS NULL OR i.id=CAST(:item AS uuid))
+)
+"""
+EXPENSES = """
+WITH aggregated AS (
+ SELECT v.id AS item_id, v.supplier_name || ' · ' || v.number AS name, '' AS unit,
+   v.received_at,
+   to_char(v.received_at AT TIME ZONE 'Asia/Almaty', 'DD.MM.YYYY') AS day_label,
+   v.goods_minor, v.expenses_minor, v.total_minor,
+   v.paid_on_receipt_minor + COALESCE((SELECT sum(p.amount_minor)
+     FROM inventory_invoice_payments p WHERE p.invoice_id=v.id), 0) AS paid_minor
+ FROM inventory_invoices v WHERE v.received_at>=:start AND v.received_at<:end
+)
+"""
+CASHBOOK = """
+WITH flows AS (
+ SELECT COALESCE(NULLIF(p.payment_method_name, ''), 'Касса') AS name,
+   p.total_minor AS income, 0 AS outcome
+ FROM pos_attempts p WHERE p.outcome='success' AND :mode='mock'
+   AND p.created_at>=:start AND p.created_at<:end
+ UNION ALL
+ SELECT COALESCE(NULLIF(p.payment_method_name, ''), 'Касса'), 0, r.amount_minor
+ FROM pos_returns r JOIN pos_attempts p ON p.id=r.sale_id
+ WHERE :mode='mock' AND r.created_at>=:start AND r.created_at<:end
+ UNION ALL
+ SELECT 'Онлайн-оплата', CASE WHEN e.kind='confirmed' THEN d.total_minor ELSE 0 END,
+   CASE WHEN e.kind='paid_cancelled' THEN d.total_minor ELSE 0 END
+ FROM order_events e JOIN checkout_drafts d ON d.id=e.subject_id
+ WHERE e.kind IN ('confirmed','paid_cancelled') AND :mode='mock'
+   AND e.created_at>=:start AND e.created_at<:end
+ UNION ALL
+ SELECT v.payment_method_name, 0, v.paid_on_receipt_minor
+ FROM inventory_invoices v WHERE v.received_at>=:start AND v.received_at<:end
+ UNION ALL
+ SELECT d.name, 0, p.amount_minor
+ FROM inventory_invoice_payments p JOIN inventory_directories d ON d.id=p.payment_method_id
+ WHERE p.paid_at>=:start AND p.paid_at<:end
+), aggregated AS (
+ SELECT md5(name)::uuid AS item_id, name, '' AS unit,
+   sum(income) AS income_minor, sum(outcome) AS outcome_minor,
+   sum(income) - sum(outcome) AS balance_minor
+ FROM flows GROUP BY name
+)
+"""
+DEBTS = """
+WITH invoices AS (
+ SELECT v.supplier_id, v.supplier_name, v.total_minor,
+   v.paid_on_receipt_minor + COALESCE((SELECT sum(p.amount_minor)
+     FROM inventory_invoice_payments p WHERE p.invoice_id=v.id), 0) AS paid_minor
+ FROM inventory_invoices v
+), aggregated AS (
+ SELECT supplier_id AS item_id, supplier_name AS name, '' AS unit,
+   count(*) AS invoices, sum(total_minor) AS total_minor, sum(paid_minor) AS paid_minor,
+   sum(total_minor - paid_minor) AS debt_minor
+ FROM invoices WHERE total_minor > paid_minor GROUP BY supplier_id, supplier_name
+)
+"""
+HOURS = """
+SELECT extract(hour FROM created_at AT TIME ZONE 'Asia/Almaty') AS hour,
+  count(*) AS orders, sum(total) AS paid_minor
+FROM (
+  SELECT p.created_at, p.total_minor AS total FROM pos_attempts p
+  WHERE p.outcome='success' AND p.mode=:mode
+  UNION ALL
+  SELECT e.created_at, d.total_minor FROM order_events e
+  JOIN checkout_drafts d ON d.id=e.subject_id LEFT JOIN orders o ON o.id=d.id
+  WHERE e.kind='confirmed' AND COALESCE(o.mode, 'mock')=:mode
+) paid
+WHERE created_at>=:start AND created_at<:end
+GROUP BY 1 ORDER BY 1
+"""
 QUERIES: dict[ReportKind, str] = {
     "sales": SALES,
     "production": PRODUCTION,
     "stock": STOCK,
     "writeoffs": WRITEOFFS,
+    "top": TOP,
+    "abc": ABC,
+    "unsold": UNSOLD,
+    "returns": RETURNS,
+    "inventory": INVENTORY,
+    "expenses": EXPENSES,
+    "cashbook": CASHBOOK,
+    "debts": DEBTS,
+}
+ORDER: dict[ReportKind, str] = {
+    "sales": "name, item_id, unit, channel, period_id",
+    "top": "revenue_minor DESC, name, item_id",
+    "abc": "revenue_minor DESC, name, item_id",
+    "inventory": "created_at DESC, item_id",
+    "expenses": "received_at DESC, item_id",
+    "cashbook": "name, item_id",
+    "debts": "debt_minor DESC, name, item_id",
+}
+NOTES: dict[ReportKind, str] = {
+    "sales": (
+        "Даты относятся к событиям оплаты, выдачи и отмены (Астана). "
+        "Резерв не является продажей. Возвраты кассы и отмены оплаченных заказов — в «Возвраты»."
+    ),
+    "production": "Фактический выпуск за выбранные даты. Единицы разных товаров не суммируются.",
+    "stock": "Остаток на момент запроса, не исторический. Даты не применяются.",
+    "writeoffs": (
+        "Списания и расхождения пересчёта за выбранные даты. Расход при "
+        "производстве и продаже сюда не входит."
+    ),
+    "top": "Товары по выручке за вычетом возвратов, от большей к меньшей.",
+    "abc": "A — товары, дающие первые 80% выручки, B — следующие 15%, C — остальные 5%.",
+    "unsold": "Готовые и покупные товары без оплаченных продаж за выбранные даты.",
+    "returns": "Возвраты на кассе и отмены оплаченных заказов сайта.",
+    "inventory": "Каждый пересчёт партии: учётное и фактическое количество, причина и автор.",
+    "expenses": "Накладные прихода за выбранные даты: товары, дополнительные расходы и оплата.",
+    "cashbook": (
+        "Движение денег по способам оплаты: продажи и возвраты, оплаты поставщикам. "
+        "Оплата сайта и кассы тестовая."
+    ),
+    "debts": "Текущие долги поставщикам по всем непогашенным накладным; даты не применяются.",
 }
 
 
@@ -119,7 +301,7 @@ class PostgresReportRepository:
         unit_sql = f"""COALESCE((SELECT jsonb_object_agg(unit, summary) FROM
           (SELECT unit, jsonb_build_object({unit_pairs}) AS summary
            FROM aggregated GROUP BY unit) units),'{{}}'::jsonb)"""
-        order = "name, item_id, unit" + (", channel, period_id" if kind == "sales" else "")
+        order = ORDER.get(kind, "name, item_id, unit")
         query = (
             QUERIES[kind]
             + f"""
@@ -149,29 +331,7 @@ class PostgresReportRepository:
             .mappings()
             .one()
         )
-        note = {
-            "sales": (
-                "Даты относятся к событиям оплаты, выдачи и отмены (Астана). "
-                "Резерв не является продажей. Неявка пока не учитывается."
-            ),
-            "production": (
-                "Фактический выпуск за выбранные даты. Единицы разных товаров не суммируются."
-            ),
-            "stock": (
-                "Остаток на момент запроса, не исторический. Даты не применяются. "
-                "Резервы показаны по учёту; истёкшие освобождает фоновый обработчик."
-            ),
-            "writeoffs": (
-                "Списания и расхождения пересчёта за выбранные даты. Расход при "
-                "производстве и продаже сюда не входит."
-            ),
-        }[kind]
-        if kind == "sales":
-            note += (
-                ""
-                if filters.mode == "mock"
-                else " Реальная оплата не подключена; реальных поступлений нет."
-            )
+        note = NOTES[kind]
         return Report(
             kind,
             row["generated_at"],
@@ -229,7 +389,25 @@ class PostgresReportRepository:
             .mappings()
             .one()
         )
-        return Dashboard(row["generated_at"], row["totals"], row["top"], row["low"])
+        hours = self.connection.execute(
+            text(HOURS), {"start": start, "end": end, "mode": filters.mode}
+        ).mappings()
+        totals = dict(row["totals"])
+        orders = 0
+        hourly: list[dict[str, str]] = []
+        for hour in hours:
+            orders += int(hour["orders"])
+            hourly.append(
+                {
+                    "hour": str(int(hour["hour"])),
+                    "paid_minor": str(hour["paid_minor"]),
+                    "orders": str(hour["orders"]),
+                }
+            )
+        paid = int(totals.get("paid_minor", "0"))
+        totals["orders"] = str(orders)
+        totals["average_minor"] = str(paid // orders if orders else 0)
+        return Dashboard(row["generated_at"], totals, row["top"], row["low"], hourly)
 
     def options(self, target: str, offset: int, limit: int) -> list[dict[str, str]]:
         table = "inventory_items" if target == "items" else "catalog_periods"

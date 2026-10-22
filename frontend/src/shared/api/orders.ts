@@ -135,6 +135,8 @@ export const ordersApi = {
       order,
     );
   },
+  staffOrder: (id: string) =>
+    request(`/orders/staff/${encodeURIComponent(id)}`).then(order),
   transition: (id: string, body: KitchenTransition, key: string) =>
     keyed(`/orders/staff/${id}/transition`, body, key).then(order),
   cancel: (id: string) => request(`/orders/${id}/cancel`, "POST").then(order),

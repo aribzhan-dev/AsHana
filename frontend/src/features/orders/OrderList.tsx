@@ -13,6 +13,24 @@ import {
   LoadingState,
 } from "../../shared/ui/Feedback";
 import { KitchenActions } from "./KitchenActions";
+import { CardPayment } from "./CardPayment";
+import { KitchenLive } from "./KitchenLive";
+import { GuestLive } from "./GuestLive";
+import { orderNumber, pickupPayload } from "../../shared/lib/pickup-qr";
+import { QrCode } from "../../shared/ui/QrCode";
+import { Icon } from "../../shared/ui/Icon";
+const steps = ["confirmed", "preparing", "ready", "completed"] as const;
+const stepLabels = ["Принят", "Собираем", "Готов", "Выдан"];
+const pickupTime = new Intl.DateTimeFormat("ru-RU", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Asia/Almaty",
+});
+const pickupDay = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "long",
+  timeZone: "Asia/Almaty",
+});
 const statuses: Record<Order["status"], string> = {
   pending_payment: "Ожидает оплаты",
   confirmed: "Принят",
@@ -37,7 +55,8 @@ export function OrderCard({
   onChanged: () => void;
 }) {
   const op = useOperation(() => window.location.reload());
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(""),
+    [paying, setPaying] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (order.status !== "pending_payment") return;
@@ -56,6 +75,7 @@ export function OrderCard({
       return result;
     });
     if (ok) {
+      setPaying(false);
       setNotice(
         paymentStatus === "pending_payment"
           ? "Оплата не подтверждена. Можно повторить до истечения резерва."
@@ -64,26 +84,87 @@ export function OrderCard({
       onChanged();
     }
   }
+  const active =
+    !staff &&
+    order.pickup_code &&
+    ["confirmed", "preparing", "ready"].includes(order.status);
+  const step = steps.indexOf(order.status as (typeof steps)[number]);
   return (
-    <Card className="production-card order-card">
-      <div className="production-card-heading">
-        <h2>
-          {checkout || order.status === "pending_payment"
-            ? "Оформление"
-            : "Заказ"}{" "}
-          {order.id.slice(0, 8)}
-        </h2>
-        <Badge>{statuses[order.status]}</Badge>
-      </div>
-      {!staff &&
-        order.pickup_code &&
-        ["confirmed", "preparing", "ready"].includes(order.status) && (
+    <Card
+      className={`production-card order-card ${active ? "order-ticket" : ""}`}
+    >
+      {active && (
+        <div className="ticket-head">
+          <span className="success-badge" aria-hidden="true">
+            <Icon name="check" />
+          </span>
+          <h2>Заказ оформлен!</h2>
+          <p className="muted">Ваш заказ №{orderNumber(order.id)}</p>
+          <div className="badges centered">
+            <Badge>{statuses[order.status]}</Badge>
+            <Badge>
+              {order.dining === "takeaway" ? "С собой" : "В столовой"}
+            </Badge>
+          </div>
+        </div>
+      )}
+      {!active && (
+        <div className="production-card-heading">
+          <h2>
+            {checkout || order.status === "pending_payment"
+              ? "Оформление"
+              : "Заказ"}{" "}
+            №{orderNumber(order.id)}
+          </h2>
+          <div className="badges">
+            <Badge>{statuses[order.status]}</Badge>
+            {order.dining === "takeaway" && <Badge>С собой</Badge>}
+          </div>
+        </div>
+      )}
+      {active && step >= 0 && (
+        <ol className="order-steps" aria-label="Статус заказа">
+          {stepLabels.map((label, index) => (
+            <li
+              key={label}
+              className={index <= step ? "done" : ""}
+              aria-current={index === step ? "step" : undefined}
+            >
+              {label}
+            </li>
+          ))}
+        </ol>
+      )}
+      {active && (
+        <div className="pickup-box">
+          <Icon name="clock" />
+          <div>
+            <small>Время получения</small>
+            <strong>
+              {pickupTime.format(new Date(order.slot_starts_at))} –{" "}
+              {pickupTime.format(new Date(order.slot_ends_at))}
+            </strong>
+            <small>{pickupDay.format(new Date(order.slot_starts_at))}</small>
+          </div>
+        </div>
+      )}
+      {active && order.pickup_code && (
+        <div className="qr-box" id={`qr-${order.id}`}>
+          <QrCode
+            value={pickupPayload(order.id, order.pickup_code)}
+            label={`QR-код заказа №${orderNumber(order.id)}`}
+            size={196}
+          />
           <p>
-            Код получения:{" "}
-            <strong data-testid="pickup-code">{order.pickup_code}</strong>.
-            Покажите сотруднику при получении.
+            {order.status === "ready"
+              ? "Заказ готов! Поднесите QR-код к сканеру на стойке выдачи"
+              : "Покажите QR-код на стойке выдачи"}
           </p>
-        )}
+          <p className="pickup-code">
+            Код: <strong data-testid="pickup-code">{order.pickup_code}</strong>
+          </p>
+        </div>
+      )}
       {staff && (
         <KitchenActions
           order={order}
@@ -97,10 +178,12 @@ export function OrderCard({
           сотруднику; не выдавайте этот заказ без проверки.
         </Alert>
       )}
-      <p>
-        Получение: {stockDate(order.slot_starts_at)} —{" "}
-        {stockDate(order.slot_ends_at)}
-      </p>
+      {!active && (
+        <p className="muted">
+          Получение: {stockDate(order.slot_starts_at)} —{" "}
+          {stockDate(order.slot_ends_at)}
+        </p>
+      )}
       <ul className="production-lines">
         {order.lines.map((l) => (
           <li key={l.entry_id}>
@@ -121,16 +204,21 @@ export function OrderCard({
             На оплату: {Math.floor(remaining / 60)}:
             {String(remaining % 60).padStart(2, "0")}
           </p>
-          <p className="field-hint">
-            Резерв до {stockDate(order.expires_at)}. Это ещё не заказ; кухня его
-            не видит.
-          </p>
           {!staff && (
             <div className="button-row">
-              <Button disabled={op.busy} onClick={() => void pay("success")}>
+              <Button disabled={op.busy} onClick={() => setPaying(true)}>
                 Оплатить заказ
               </Button>
             </div>
+          )}
+          {paying && (
+            <CardPayment
+              total={order.total_minor}
+              busy={op.busy}
+              error={op.error}
+              onPay={(outcome) => void pay(outcome)}
+              onClose={() => setPaying(false)}
+            />
           )}
         </>
       )}
@@ -184,6 +272,12 @@ export function OrderList({
           setOrders(orders);
           setDrafts(drafts);
           setError("");
+          if (!staff && window.location.hash === "#qr")
+            window.requestAnimationFrame(() =>
+              document
+                .querySelector(".qr-box")
+                ?.scrollIntoView({ block: "center" }),
+            );
         }
       } catch (cause) {
         if (active) setError(errorMessage(cause));
@@ -193,27 +287,26 @@ export function OrderList({
       }
     }
     void load();
-    const timer = window.setInterval(() => void load(), 15000);
+    // Reloads come from live signals (KitchenLive / GuestLive) with polling as fallback.
     return () => {
       active = false;
-      window.clearInterval(timer);
     };
   }, [staff, offset, attempt]);
   function refresh() {
     setAttempt((n) => n + 1);
   }
   return (
-    <div className="form-stack">
+    <div className={`form-stack ${staff ? "" : "guest-orders"}`}>
+      {staff ? (
+        <KitchenLive onReload={refresh} />
+      ) : (
+        <GuestLive onReload={refresh} />
+      )}
       <div className="button-row">
         <Button variant="secondary" disabled={loading} onClick={refresh}>
           Обновить заказы
         </Button>
       </div>
-      <p className="field-hint">
-        {staff
-          ? "Оплаченные заказы, ближайшие по времени — первыми. Обновление каждые 15 секунд."
-          : "Оформления и заказы доступны в этом браузере. При удалении cookie доступ будет потерян; номер заказа сам по себе не даёт доступа."}
-      </p>
       {loading ? (
         <LoadingState />
       ) : error ? (
@@ -222,7 +315,7 @@ export function OrderList({
         <>
           {!staff && drafts.length > 0 && (
             <>
-              <h2>Оформления до оплаты</h2>
+              <h2>Ожидают оплаты</h2>
               <div className="production-grid">
                 {drafts.map((o) => (
                   <OrderCard
@@ -236,7 +329,26 @@ export function OrderList({
               </div>
             </>
           )}
-          <h2>Заказы после оплаты</h2>
+          {staff && (
+            <div className="kds-counters" aria-label="Сводка заказов">
+              {(
+                [
+                  ["confirmed", "Новые", "bell"],
+                  ["preparing", "Собираются", "utensils"],
+                  ["ready", "Готовы", "check"],
+                ] as const
+              ).map(([status, label, icon]) => (
+                <div key={status} className={`kds-counter kds-${status}`}>
+                  <Icon name={icon} />
+                  <span>{label}</span>
+                  <strong>
+                    {orders.filter((o) => o.status === status).length}
+                  </strong>
+                </div>
+              ))}
+            </div>
+          )}
+          <h2>{staff ? "Заказы" : "Мои заказы"}</h2>
           {!orders.length && <EmptyState title="Заказов пока нет" />}
           <div className="production-grid">
             {orders.map((o) => (

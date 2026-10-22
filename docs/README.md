@@ -1,8 +1,10 @@
 # Документация AsHana
 
-Статус: FOUNDATION-01, IDENTITY-01, UI-01, INVENTORY-01, PRODUCTION-01, CATALOG-01, ORDERS-01, KITCHEN-01, POS-01 и REPORTS-01 реализованы. Аккаунты предназначены
+Статус: FOUNDATION-01, IDENTITY-01, UI-01, INVENTORY-01, PRODUCTION-01, CATALOG-01, ORDERS-01, KITCHEN-01, POS-01, REPORTS-01,
+WORKSPACE-01, OPERATIONS-01, PRODUCTS-02, DESIGN-02, OPERATIONS-02, LIVE-01 и FINANCE-01 реализованы; TELEGRAM-01 ждёт токен.
+Оплата остаётся mock; технический PILOT-01 выполнен, пилот в столовой — нет. Аккаунты предназначены
 только сотрудникам; публичной регистрации нет. Склад ведёт партии и движения; производство атомарно списывает сырьё и создаёт готовые партии.
-Гостевые оформления резервируют партии/слоты; orders создаётся после успешной mock-оплаты. Комплектация и однократная тестовая выдача реализованы; реальные платежи остаются следующим этапом.
+Гостевые оформления резервируют партии/слоты; orders создаётся после успешной mock-оплаты. Комплектация и однократная тестовая выдача реализованы; реальные платежи не подключаются по решению владельца.
 Начать с [AGENTS.md](../AGENTS.md), результаты проверок — в [текущем этапе](../tasks/current-sprint.md).
 
 ## Продукт
@@ -34,6 +36,7 @@
 - [Заказы, слоты и выдача](modules/orders.md)
 - [Mock-оплата](modules/payments.md)
 - [Отчёты](modules/reporting.md)
+- [Финансы и зарплата](modules/finance.md)
 
 ## Разработка
 
@@ -45,6 +48,7 @@
 - [HTTP, ошибки и логи](engineering/http-errors-and-logging.md)
 - [Локальная разработка и Docker](engineering/local-development.md)
 - [Работа с меню](engineering/catalog-usage.md)
+- [Финансы и зарплата](engineering/finance-usage.md)
 - [Заказы и Telegram](engineering/orders-usage.md)
 - [Работа со складом](engineering/inventory-usage.md)
 - [Рецепты и производство](engineering/production-usage.md)
@@ -67,3 +71,8 @@
 - [Рабочий кабинет WORKSPACE-01](engineering/workspace-usage.md)
 - [Накладные и ежедневные операции OPERATIONS-01](engineering/receiving-usage.md)
 - [Карточки товаров и никнеймы PRODUCTS-02](engineering/product-profiles.md)
+- [QR-выдача и дизайн DESIGN-02](../tasks/DESIGN-02.md)
+- [Возвраты, долги, отчёты OPERATIONS-02](../tasks/OPERATIONS-02.md)
+- [Живые экраны LIVE-01](../tasks/LIVE-01.md)
+- [Telegram TELEGRAM-01](../tasks/TELEGRAM-01.md)
+- [Финансы, зарплата, фото, PILOT-01 — FINANCE-01](../tasks/FINANCE-01.md)

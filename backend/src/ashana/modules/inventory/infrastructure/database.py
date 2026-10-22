@@ -3,22 +3,26 @@ from collections.abc import Callable
 from dataclasses import asdict
 from datetime import datetime
 from types import TracebackType
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
     Integer,
+    LargeBinary,
     MetaData,
     Numeric,
     String,
     Table,
     UniqueConstraint,
     Uuid,
+    false,
     func,
     select,
     text,
@@ -27,6 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.sql import Select
 
 from ashana.modules.inventory.application.ports import InventoryRepository
 from ashana.modules.inventory.domain.models import (
@@ -34,6 +39,7 @@ from ashana.modules.inventory.domain.models import (
     DirectoryEntry,
     InventoryError,
     Invoice,
+    InvoicePayment,
     Item,
     Movement,
     Result,
@@ -59,6 +65,7 @@ items = Table(
     Column("purchase_price_minor", BigInteger, nullable=False),
     Column("sale_price_minor", BigInteger, nullable=False),
     Column("version", Integer, nullable=False),
+    Column("always_on_menu", Boolean, nullable=False, server_default=false()),
     Column("kind", String(20), nullable=False),
     Column("unit", String(10), nullable=False),
     CheckConstraint(
@@ -127,7 +134,7 @@ movements = Table(
     ),
     CheckConstraint(
         "action IN ('receipt','write_off','count','suspend','resume',"
-        "'production_consume','production_output','mock_fulfil','mock_pos_sale')",
+        "'production_consume','production_output','mock_fulfil','mock_pos_sale','pos_return')",
         name="ck_inventory_movement_action",
     ),
 )
@@ -160,6 +167,17 @@ directories = Table(
     Column("kind", String(20), nullable=False),
     Column("name", String(100), nullable=False),
     Column("name_key", String(200), nullable=False),
+    Column("commission_bp", Integer, nullable=False, server_default="0"),
+)
+images = Table(
+    "inventory_item_images",
+    metadata,
+    Column("item_id", Uuid, primary_key=True),
+    Column("content_type", String(20), nullable=False),
+    Column("data", LargeBinary, nullable=False),
+    Column("digest", String(64), nullable=False),
+    Column("actor_id", Uuid, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 invoices = Table(
     "inventory_invoices",
@@ -180,6 +198,19 @@ invoices = Table(
     Column("supplier_name", String(100), nullable=False),
     Column("warehouse_name", String(100), nullable=False),
     Column("payment_method_name", String(100), nullable=False),
+    Column("paid_on_receipt_minor", BigInteger, nullable=False),
+)
+invoice_payments = Table(
+    "inventory_invoice_payments",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("invoice_id", Uuid, nullable=False),
+    Column("amount_minor", BigInteger, nullable=False),
+    Column("payment_method_id", Uuid, nullable=False),
+    Column("note", String(200), nullable=False),
+    Column("actor_id", Uuid, nullable=False),
+    Column("paid_at", DateTime(timezone=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
 
@@ -189,7 +220,7 @@ class PostgresInventoryRepository:
 
     def directories(self, kind: str) -> list[DirectoryEntry]:
         return [
-            DirectoryEntry(row.id, row.kind, row.name)
+            DirectoryEntry(row.id, row.kind, row.name, row.commission_bp)
             for row in self.connection.execute(
                 select(directories)
                 .where(directories.c.kind == kind)
@@ -205,28 +236,71 @@ class PostgresInventoryRepository:
         except IntegrityError:
             raise InventoryError("DIRECTORY_EXISTS", "Такое название уже существует") from None
 
+    def _invoice_query(self) -> Select[Any]:
+        later = (
+            select(func.coalesce(func.sum(invoice_payments.c.amount_minor), 0))
+            .where(invoice_payments.c.invoice_id == invoices.c.id)
+            .scalar_subquery()
+        )
+        return select(invoices, (invoices.c.paid_on_receipt_minor + later).label("paid_minor"))
+
     def invoices(self, offset: int, limit: int) -> list[Invoice]:
         return [
-            Invoice(**row)
+            Invoice(**dict(row, paid_minor=int(row["paid_minor"])))
             for row in self.connection.execute(
-                select(invoices)
+                self._invoice_query()
                 .order_by(invoices.c.created_at.desc(), invoices.c.id)
                 .offset(offset)
                 .limit(limit)
             ).mappings()
         ]
 
+    def invoice(self, id: UUID, *, lock: bool = False) -> Invoice | None:
+        if lock:
+            # Invoices are insert-only for the runtime role; lock payments per invoice.
+            self.connection.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                {"key": f"invoice:{id}"},
+            )
+        row = (
+            self.connection.execute(self._invoice_query().where(invoices.c.id == id))
+            .mappings()
+            .first()
+        )
+        return Invoice(**dict(row, paid_minor=int(row["paid_minor"]))) if row else None
+
+    def add_invoice_payment(self, payment: InvoicePayment) -> None:
+        self.connection.execute(invoice_payments.insert().values(**asdict(payment)))
+
+    def invoice_payments(self, invoice_id: UUID) -> list[InvoicePayment]:
+        return [
+            InvoicePayment(**row)
+            for row in self.connection.execute(
+                select(invoice_payments)
+                .where(invoice_payments.c.invoice_id == invoice_id)
+                .order_by(invoice_payments.c.paid_at, invoice_payments.c.id)
+            ).mappings()
+        ]
+
     def add_invoice(self, invoice: Invoice) -> None:
+        values = asdict(invoice)
+        values.pop("paid_minor")
         try:
-            self.connection.execute(invoices.insert().values(**asdict(invoice)))
+            self.connection.execute(invoices.insert().values(**values))
         except IntegrityError:
             raise InventoryError(
                 "INVOICE_EXISTS", "Накладная этого поставщика с таким номером уже проведена"
             ) from None
 
+    def _item_query(self) -> Select[Any]:
+        return select(
+            *[c for c in items.c if c.name != "name_key"],
+            func.coalesce(images.c.digest, "").label("image"),
+        ).outerjoin(images, images.c.item_id == items.c.id)
+
     def items(self, offset: int, limit: int, *, kind: str | None = None) -> list[Item]:
         rows = self.connection.execute(
-            select(*[c for c in items.c if c.name != "name_key"])
+            self._item_query()
             .where(items.c.kind == kind if kind else true())
             .order_by(items.c.name, items.c.id)
             .offset(offset)
@@ -235,9 +309,38 @@ class PostgresInventoryRepository:
         return [Item(**row) for row in rows]
 
     def item(self, item_id: UUID, *, lock: bool = False) -> Item | None:
-        query = select(*[c for c in items.c if c.name != "name_key"]).where(items.c.id == item_id)
-        row = self.connection.execute(query.with_for_update() if lock else query).mappings().first()
+        query = self._item_query().where(items.c.id == item_id)
+        row = (
+            self.connection.execute(query.with_for_update(of=items) if lock else query)
+            .mappings()
+            .first()
+        )
         return Item(**row) if row else None
+
+    def save_image(self, item_id: UUID, data: bytes, actor: UUID, now: datetime) -> str:
+        digest = hashlib.sha256(data).hexdigest()
+        values = {
+            "content_type": "image/webp",
+            "data": data,
+            "digest": digest,
+            "actor_id": actor,
+            "updated_at": now,
+        }
+        updated = self.connection.execute(
+            images.update().where(images.c.item_id == item_id).values(**values)
+        )
+        if not updated.rowcount:
+            self.connection.execute(images.insert().values(item_id=item_id, **values))
+        return digest
+
+    def delete_image(self, item_id: UUID) -> None:
+        self.connection.execute(images.delete().where(images.c.item_id == item_id))
+
+    def image(self, item_id: UUID) -> tuple[bytes, str] | None:
+        row = self.connection.execute(
+            select(images.c.data, images.c.digest).where(images.c.item_id == item_id)
+        ).first()
+        return (bytes(row.data), str(row.digest)) if row else None
 
     def update_barcode(self, item_id: UUID, barcode: str | None) -> None:
         try:
@@ -253,7 +356,7 @@ class PostgresInventoryRepository:
 
     def update_item(self, item: Item) -> None:
         values = asdict(item)
-        for field in ("id", "kind", "unit"):
+        for field in ("id", "kind", "unit", "image"):
             values.pop(field)
         try:
             self.connection.execute(
@@ -267,7 +370,10 @@ class PostgresInventoryRepository:
     def add_item(self, item: Item) -> None:
         try:
             self.connection.execute(
-                items.insert().values(**asdict(item), name_key=item.name.casefold())
+                items.insert().values(
+                    **{k: v for k, v in asdict(item).items() if k != "image"},
+                    name_key=item.name.casefold(),
+                )
             )
         except IntegrityError:
             raise InventoryError(

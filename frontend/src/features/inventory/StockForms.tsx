@@ -1,3 +1,5 @@
+import { CategorySelect } from "./CategorySelect";
+import { PhotoField } from "./PhotoField";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -18,6 +20,7 @@ import {
   stockQuantityError,
 } from "../../shared/lib/inventory-validation";
 import { useStockMutation } from "./useStockMutation";
+import { catalogApi } from "../../shared/api/catalog";
 
 type Props = {
   onExpired: () => void;
@@ -37,6 +40,7 @@ export function ItemForm({
 }: Props) {
   const [barcode, setBarcode] = useState(previous?.barcode || "");
   const [category, setCategory] = useState(previous?.category || "");
+  const [always, setAlways] = useState(previous?.always_on_menu ?? false);
   const [purchase, setPurchase] = useState(
     String((previous?.purchase_price_minor || 0) / 100),
   );
@@ -83,6 +87,7 @@ export function ItemForm({
       kind,
       unit,
       barcode: kind === "purchased" ? barcode || null : null,
+      always_on_menu: kind === "purchased" && always,
     };
     if (
       await mutation.run(data, async (key) => {
@@ -96,10 +101,16 @@ export function ItemForm({
                 purchase_price_minor: purchaseMinor,
                 sale_price_minor: saleMinor,
                 expected_version: previous.version ?? 1,
+                always_on_menu: data.always_on_menu,
               },
               key,
             )
           : await inventoryApi.createItem(data, key);
+        if (data.always_on_menu)
+          // Without catalog.manage the goods join new periods when a manager creates them.
+          await catalogApi
+            .syncPermanent(crypto.randomUUID())
+            .catch(() => undefined);
         onCreated?.(result.subject_id, unit, purchaseMinor);
       })
     ) {
@@ -144,12 +155,9 @@ export function ItemForm({
                 </option>
               ))}
           </Select>
-          <Input
-            label="Категория"
-            placeholder="Например, вода, напитки, готовая еда"
+          <CategorySelect
             value={category}
-            maxLength={100}
-            onChange={(e) => setCategory(e.target.value)}
+            onChange={setCategory}
             error={mutation.fields.category}
           />
           <div className="stock-form-grid">
@@ -159,7 +167,6 @@ export function ItemForm({
               value={purchase}
               onChange={(e) => setPurchase(e.target.value)}
               error={mutation.fields.purchase_price_minor}
-              hint="За базовую единицу. Подставляется в новую накладную."
             />
             <Input
               label="Цена продажи, ₸"
@@ -167,7 +174,6 @@ export function ItemForm({
               value={sale}
               onChange={(e) => setSale(e.target.value)}
               error={mutation.fields.sale_price_minor}
-              hint="Для новой публикации в меню. Старые цены не меняются."
             />
           </div>
           {kind === "purchased" && (
@@ -182,6 +188,27 @@ export function ItemForm({
               }
               error={mutation.fields.barcode}
             />
+          )}
+          {kind === "purchased" && (
+            <label className="check-label switch-label">
+              <input
+                type="checkbox"
+                checked={always}
+                onChange={(e) => setAlways(e.target.checked)}
+              />
+              <span>
+                Всегда в меню
+                <small>
+                  Показывать на сайте и в кассе, пока товар есть на складе
+                </small>
+              </span>
+            </label>
+          )}
+          {previous && previous.kind !== "raw" && (
+            <PhotoField item={previous} onChanged={() => undefined} />
+          )}
+          {mutation.fields.always_on_menu && (
+            <p className="field-error">{mutation.fields.always_on_menu}</p>
           )}
           <Select
             label={t.unit}
@@ -385,7 +412,6 @@ export function ReceiptForm({
             required
           />
         </fieldset>
-        <p className="field-hint">{t.retryHint}</p>
         {mutation.error && <Alert>{mutation.error}</Alert>}
         {notice && (
           <Toast onClose={() => setNotice(false)}>{t.receiptSaved}</Toast>

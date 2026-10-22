@@ -280,7 +280,6 @@ export function CatalogBoard({ onExpired }: { onExpired: () => void }) {
           </div>
         </>
       )}
-      <p className="field-hint">{t.publicationHint}</p>
       {editor && (
         <Dialog
           open

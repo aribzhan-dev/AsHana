@@ -38,7 +38,12 @@ test("накладная: товар внутри формы, штрихкод, 
     .fill("Напиток со штрихкодом UI");
   await dialog.getByLabel("Тип позиции").selectOption("purchased");
   await dialog.getByLabel("Штрихкод", { exact: true }).fill("4870000000018");
-  await dialog.getByLabel("Категория", { exact: true }).fill("Вода");
+  await dialog.getByLabel("Категория", { exact: true }).selectOption("__new__");
+  await dialog.getByLabel("Новая категория", { exact: true }).fill("Вода");
+  await dialog.getByRole("button", { name: "Создать", exact: true }).click();
+  await expect(dialog.getByLabel("Категория", { exact: true })).toHaveValue(
+    "Вода",
+  );
   await dialog.getByLabel("Закупочная цена, ₸", { exact: true }).fill("100,50");
   await dialog.getByLabel("Цена продажи, ₸", { exact: true }).fill("200");
   await dialog.getByRole("button", { name: "Создать товар" }).click();
@@ -137,7 +142,10 @@ test("накладная: товар внутри формы, штрихкод, 
     await page.setViewportSize({ width, height: 900 });
     if (width < 768) {
       const menu = page.getByRole("button", { name: "Меню", exact: true });
-      await menu.click();
+      // Keyboard opening: WebKit does not focus a clicked button, so focus return
+      // after Escape is checked on the keyboard path in every browser.
+      await menu.focus();
+      await page.keyboard.press("Enter");
       const drawer = page.getByRole("dialog", { name: "Меню", exact: true });
       await expect(drawer).toBeVisible();
       await expect(

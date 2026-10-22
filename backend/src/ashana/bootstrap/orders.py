@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.engine import Connection, Engine
 
+from ashana.bootstrap.database import create_side_engine
 from ashana.bootstrap.settings import Settings
 from ashana.modules.catalog.infrastructure.database import PostgresCatalogRepository
 from ashana.modules.identity.application.service import IdentityService
@@ -22,8 +23,10 @@ def order_service(engine: Engine, identity: IdentityService, settings: Settings)
         principal.require(permission)
         return principal.user.id
 
+    side = create_side_engine(settings)
+
     def allow_request(key: str, limit: int, seconds: int) -> bool:
-        with engine.begin() as connection:
+        with side.begin() as connection:
             return PostgresIdentityRepository(connection).consume_rate(
                 hashlib.sha256(("orders:" + key).encode()).hexdigest(),
                 datetime.now(UTC),

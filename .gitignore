@@ -8,6 +8,7 @@
 *.p12
 *.pfx
 secrets/
+secret/
 credentials/
 *.sql
 *.dump
@@ -43,14 +44,16 @@ reports/
 *.junit.xml
 junit*.xml
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
+*.swp
+*~
+*.orig
 *.tsbuildinfo
-# Private planning and AI documents; publishing requires owner approval.
-# /docs/
-# /tasks/
-# /.claude/
-# /.agents/
-# /AGENTS.md
-# /CLAUDE.md
-# /README.md
+.eslintcache
+.vite/
+# Machine-local tool settings.
+.claude/launch.json
+.claude/settings.local.json
+# Documentation, tasks and agent instructions may be published (owner, 23.10.2026).

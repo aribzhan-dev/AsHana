@@ -73,3 +73,14 @@ class Order:
     slot_ends_at: datetime
     stock_issue: bool = False
     pickup_code: str | None = None
+    dining: str = "here"
+
+
+def short_number(order_id: UUID) -> str:
+    """Display number shown to guests and staff; not unique and never used for lookup."""
+    return f"{int(order_id.hex[:6], 16) % 10000:04d}"
+
+
+def tenge(minor: int) -> str:
+    whole = f"{minor // 100:,}".replace(",", "\u00a0")
+    return f"{whole} ₸" if minor % 100 == 0 else f"{whole},{minor % 100:02d} ₸"

@@ -20,7 +20,9 @@
     "api:generate": "openapi-typescript ../backend/openapi.json -o src/shared/api/schema.d.ts"
   },
   "dependencies": {
+    "jsqr": "1.4.0",
     "libphonenumber-js": "1.13.15",
+    "qrcode": "1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
@@ -32,6 +34,7 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.14.0",
+    "@types/qrcode": "1.5.5",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^6.1.2",

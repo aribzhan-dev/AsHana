@@ -25,6 +25,12 @@ const ProductionPage = lazy(() =>
 const InventoryPage = lazy(() =>
   import("../pages/InventoryPage").then((m) => ({ default: m.InventoryPage })),
 );
+const ScanPage = lazy(() =>
+  import("../pages/ScanPage").then((m) => ({ default: m.ScanPage })),
+);
+const FinancePage = lazy(() =>
+  import("../pages/FinancePage").then((m) => ({ default: m.FinancePage })),
+);
 const StaffPage = lazy(() =>
   import("../pages/StaffPage").then((m) => ({ default: m.StaffPage })),
 );
@@ -39,6 +45,10 @@ export function App() {
         <PosPage />
       ) : window.location.pathname === "/orders" ? (
         <OrdersPage />
+      ) : window.location.pathname === "/staff/finance" ? (
+        <FinancePage />
+      ) : window.location.pathname === "/staff/scan" ? (
+        <ScanPage />
       ) : window.location.pathname === "/staff/orders" ? (
         <StaffOrdersPage />
       ) : window.location.pathname === "/staff/catalog" ? (

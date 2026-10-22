@@ -54,6 +54,31 @@ class PosResponse(BaseModel):
     total_minor: int
     created_at: datetime
     lines: list[OrderLineResponse]
+    returned_minor: int = 0
+
+
+class ReturnLineInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entry_id: UUID
+    quantity: int = Field(ge=0, le=100, strict=True)
+
+
+class ReturnInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lines: list[ReturnLineInput] = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=1, max_length=200, strict=True)
+    disposition: Literal["restock", "write_off"]
+
+
+class ReturnResponse(BaseModel):
+    id: UUID
+    sale_id: UUID
+    actor_id: UUID
+    created_at: datetime
+    reason: str
+    disposition: Literal["restock", "write_off"]
+    amount_minor: int
+    lines: list[OrderLineResponse]
 
 
 @router.get("/menu", operation_id="getPosMenu")
@@ -132,6 +157,36 @@ def write_off(
                 data.unit,
                 data.reason,
                 data.expected_version,
+            )
+        )
+    )
+
+
+@router.get("/sales/{sale_id}/returns", operation_id="listPosReturns")
+def sale_returns(sale_id: UUID, request: Request, service: Service) -> list[ReturnResponse]:
+    return [ReturnResponse(**asdict(r)) for r in service.returns(session_token(request), sale_id)]
+
+
+@router.post(
+    "/sales/{sale_id}/returns",
+    operation_id="createPosReturn",
+    status_code=201,
+    dependencies=[Depends(enforce_csrf)],
+)
+def create_return(
+    sale_id: UUID,
+    data: ReturnInput,
+    request: Request,
+    service: Service,
+    key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> ReturnResponse:
+    quantities: dict[UUID, int] = {}
+    for line in data.lines:
+        quantities[line.entry_id] = quantities.get(line.entry_id, 0) + line.quantity
+    return ReturnResponse(
+        **asdict(
+            service.return_sale(
+                session_token(request), key, sale_id, quantities, data.reason, data.disposition
             )
         )
     )

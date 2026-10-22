@@ -304,7 +304,6 @@ export function ProductionBoard({ onExpired }: { onExpired: () => void }) {
           </div>
         </>
       )}
-      <p className="field-hint">{t.correction}</p>
       {editor && (
         <Dialog
           open

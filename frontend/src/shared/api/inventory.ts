@@ -8,12 +8,15 @@ export type Receipt = components["schemas"]["ReceiptInput"];
 export type StockChange = components["schemas"]["ChangeInput"];
 export type ItemInput = Omit<
   components["schemas"]["ItemInput"],
-  "category" | "purchase_price_minor" | "sale_price_minor"
+  "category" | "purchase_price_minor" | "sale_price_minor" | "always_on_menu"
 > &
   Partial<
     Pick<
       components["schemas"]["ItemInput"],
-      "category" | "purchase_price_minor" | "sale_price_minor"
+      | "category"
+      | "purchase_price_minor"
+      | "sale_price_minor"
+      | "always_on_menu"
     >
   >;
 function invalid(): never {
@@ -132,6 +135,17 @@ export const inventoryApi = {
       `/inventory/batches/${id}/movements?offset=${offset}&limit=20`,
     ).then((value) => list(value, movement)),
   createItem: (data: ItemInput, key: string) => write("/items", data, key),
+  setImage: (id: string, file: File) =>
+    request(
+      `/inventory/items/${encodeURIComponent(id)}/image`,
+      "PUT",
+      file,
+    ).then((v) => {
+      if (!record(v) || typeof v.image !== "string") return invalid();
+      return v.image;
+    }),
+  removeImage: (id: string) =>
+    request(`/inventory/items/${encodeURIComponent(id)}/image`, "DELETE"),
   updateItem: (
     id: string,
     data: components["schemas"]["ItemUpdateInput"],

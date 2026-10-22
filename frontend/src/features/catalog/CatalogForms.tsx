@@ -1,3 +1,4 @@
+import { CategorySelect } from "../inventory/CategorySelect";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ApiError } from "../../shared/api/http";
@@ -294,29 +295,11 @@ export function EntryForm({
             )}
           </>
         )}
-        <Input
-          label="Категория"
-          list="menu-categories"
-          placeholder="Например, Горячее, Супы, Напитки"
+        <CategorySelect
           value={category}
-          maxLength={60}
-          onChange={(e) => setCategory(e.target.value)}
+          onChange={setCategory}
           error={op.fields.category}
-          hint="Выберите название из подсказки или введите новую категорию."
         />
-        <datalist id="menu-categories">
-          {[
-            "Горячее",
-            "Супы",
-            "Салаты",
-            "Гарниры",
-            "Выпечка",
-            "Напитки",
-            "Молочные продукты",
-          ].map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
         <Input
           label={t.portion}
           hint={t.portionHint}
@@ -352,7 +335,6 @@ export function EntryForm({
           <span>{t.publishEntry}</span>
         </label>
       </fieldset>
-      <p className="field-hint">{t.publicationHint}</p>
       {op.error && <Alert>{op.error}</Alert>}
       <Button type="submit" loading={op.busy} disabled={loading || !!loadError}>
         {t.saveEntry}

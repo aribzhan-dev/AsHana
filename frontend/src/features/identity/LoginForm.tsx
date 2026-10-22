@@ -52,7 +52,6 @@ export function LoginForm({ onLogin }: { onLogin: (user: Staff) => void }) {
         <p className="eyebrow">{t.team}</p>
         <h1>{t.title}</h1>
         <p className="description">{t.loginDescription}</p>
-        <p className="guest-note">{t.guestNote}</p>
       </div>
       <Card className="login-card">
         <h2>{t.login}</h2>

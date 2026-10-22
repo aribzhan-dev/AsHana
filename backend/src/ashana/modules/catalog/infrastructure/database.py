@@ -43,6 +43,12 @@ items = Table(
     Column("kind", String),
     Column("unit", String),
 )
+images = Table(
+    "inventory_item_images",
+    metadata,
+    Column("item_id", Uuid, primary_key=True),
+    Column("digest", String),
+)
 batches = Table(
     "inventory_batches",
     metadata,
@@ -136,6 +142,21 @@ class PostgresCatalogRepository:
         query = periods.insert() if new else periods.update().where(periods.c.id == period.id)
         self.connection.execute(query.values(**asdict(period)))
 
+    def open_periods(self, now: datetime) -> list[Period]:
+        rows = self.connection.execute(
+            select(periods)
+            .where(periods.c.ends_at > now)
+            .order_by(periods.c.starts_at, periods.c.id)
+        ).mappings()
+        return [Period(**row) for row in rows]
+
+    def period_items(self, period_id: UUID) -> set[UUID]:
+        return set(
+            self.connection.execute(
+                select(entries.c.item_id).where(entries.c.period_id == period_id)
+            ).scalars()
+        )
+
     def entries(self, period_id: UUID, offset: int, limit: int) -> list[Entry]:
         rows = self.connection.execute(
             select(entries, items.c.name, items.c.unit)
@@ -204,11 +225,13 @@ class PostgresCatalogRepository:
                 entries.c.portion_label,
                 entries.c.price_minor,
                 available.c.available,
+                func.coalesce(images.c.digest, "").label("image"),
             )
             .select_from(entries)
             .join(periods, entries.c.period_id == periods.c.id)
             .join(items, entries.c.item_id == items.c.id)
             .join(available, entries.c.item_id == available.c.item_id)
+            .outerjoin(images, images.c.item_id == entries.c.item_id)
             .where(
                 entries.c.published.is_(True),
                 periods.c.published.is_(True),

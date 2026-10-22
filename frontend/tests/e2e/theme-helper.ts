@@ -15,3 +15,8 @@ export async function selectTheme(page: Page, theme: string) {
   await dialog.getByRole("button", { name: label, exact: true }).click();
   await expect(dialog).not.toBeVisible();
 }
+
+// Safari/WebKit on macOS moves Tab only between form fields; Option+Tab reaches links and buttons.
+export function tabKey(browserName: string) {
+  return browserName === "webkit" ? "Alt+Tab" : "Tab";
+}

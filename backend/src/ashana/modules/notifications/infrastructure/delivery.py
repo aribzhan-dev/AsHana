@@ -5,7 +5,19 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
-from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, Text, Uuid, or_, select
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    Uuid,
+    or_,
+    select,
+    true,
+)
 from sqlalchemy.engine import Connection, Engine
 
 metadata = MetaData()
@@ -21,6 +33,8 @@ outbox = Table(
     Column("lease_until", DateTime(timezone=True)),
     Column("delivered_at", DateTime(timezone=True)),
     Column("error_code", String(30)),
+    # The order the message is about; kept out of the text so the chat stays readable.
+    Column("subject_id", Uuid),
 )
 
 
@@ -28,10 +42,15 @@ class PostgresNotificationWriter:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
 
-    def enqueue(self, id: UUID, text: str, now: datetime) -> None:
+    def enqueue(self, id: UUID, text: str, now: datetime, subject_id: UUID | None = None) -> None:
         self.connection.execute(
             outbox.insert().values(
-                id=id, text=text, created_at=now, next_attempt_at=now, attempts=0
+                id=id,
+                text=text,
+                created_at=now,
+                next_attempt_at=now,
+                attempts=0,
+                subject_id=subject_id,
             )
         )
 
@@ -44,29 +63,40 @@ class TelegramSender:
     def __init__(self, token: str, chat_id: str) -> None:
         self._token, self._chat_id = token, chat_id
 
-    def __call__(self, message: str) -> None:
-        payload = json.dumps(
-            {"chat_id": self._chat_id, "text": message, "protect_content": True}
-        ).encode()
+    def call(self, method: str, payload: dict[str, object] | None = None) -> object:
         request = Request(
-            f"https://api.telegram.org/bot{self._token}/sendMessage",
-            data=payload,
+            f"https://api.telegram.org/bot{self._token}/{method}",
+            data=json.dumps(payload or {}).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
         try:
             with urlopen(request, timeout=8) as response:
-                result = json.loads(response.read(65536))
+                result = json.loads(response.read(1_000_000))
             if not isinstance(result, dict) or result.get("ok") is not True:
                 raise DeliveryFailed("Отправка не подтверждена")
+            return result.get("result")
         except (HTTPError, URLError, TimeoutError, OSError, ValueError):
             # Transport exception text includes the bot token URL; never propagate or log it.
             raise DeliveryFailed("Telegram временно недоступен") from None
 
+    def __call__(self, message: str) -> None:
+        self.call(
+            "sendMessage", {"chat_id": self._chat_id, "text": message, "protect_content": True}
+        )
 
-def deliver_one(engine: Engine, sender: Callable[[str], None], now: datetime | None = None) -> bool:
+
+def deliver_one(
+    engine: Engine,
+    sender: Callable[[str], None],
+    now: datetime | None = None,
+    max_age: timedelta | None = None,
+) -> bool:
+    """Send one due message. With max_age, older backlog (e.g. before the bot was set up)
+    is left unsent so a newly connected chat is not flooded with stale orders."""
     now = now or datetime.now(UTC)
     lease = uuid4()
+    fresh = outbox.c.created_at > now - max_age if max_age else true()
     with engine.begin() as connection:
         row = (
             connection.execute(
@@ -75,6 +105,7 @@ def deliver_one(engine: Engine, sender: Callable[[str], None], now: datetime | N
                     outbox.c.delivered_at.is_(None),
                     outbox.c.attempts < 10,
                     outbox.c.next_attempt_at <= now,
+                    fresh,
                     or_(outbox.c.lease_until.is_(None), outbox.c.lease_until <= now),
                 )
                 .order_by(outbox.c.created_at, outbox.c.id)

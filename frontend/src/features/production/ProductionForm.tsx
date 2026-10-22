@@ -354,7 +354,6 @@ export function ProductionForm({
       >
         {t.confirm}
       </Button>
-      <p className="field-hint">{s.retryHint}</p>
     </form>
   );
 }

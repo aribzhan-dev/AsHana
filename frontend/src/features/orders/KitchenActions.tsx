@@ -9,6 +9,7 @@ import { Button } from "../../shared/ui/Button";
 import { Input } from "../../shared/ui/Input";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Alert } from "../../shared/ui/Feedback";
+import { orderNumber } from "../../shared/lib/pickup-qr";
 
 export function KitchenActions({
   order,
@@ -92,7 +93,7 @@ export function KitchenActions({
             }}
           >
             <p>
-              Сверьте состав заказа {order.id.slice(0, 8)} и код на экране
+              Сверьте состав заказа №{orderNumber(order.id)} и код на экране
               посетителя. После подтверждения готовые порции будут списаны один
               раз.
             </p>

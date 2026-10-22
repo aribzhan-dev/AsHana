@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { selectTheme } from "./theme-helper";
+import { selectTheme, tabKey } from "./theme-helper";
 
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
@@ -8,7 +8,11 @@ test("гость открывает сайт без регистрации; фо
 }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/");
-  await page.getByRole("link", { name: "Для сотрудников" }).click();
+  await expect(page.getByRole("link", { name: "Для сотрудников" })).toHaveCount(
+    0,
+  );
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/staff$/);
   await expect(
     page.getByRole("heading", { name: "Кабинет сотрудника" }),
   ).toBeVisible();
@@ -32,9 +36,6 @@ test("гость открывает сайт без регистрации; фо
   await page.getByRole("button", { name: "Скрыть пароль" }).click();
   await expect(password).toHaveAttribute("type", "password");
   await password.fill("");
-  await expect(
-    page.getByText("Посетителям аккаунт не нужен", { exact: false }),
-  ).toBeVisible();
 });
 
 test("администратор создаёт сотрудника, меняет роли и завершает сессию", async ({
@@ -158,7 +159,10 @@ test("администратор создаёт сотрудника, меняе
 });
 
 for (const width of [768, 1280, 1440]) {
-  test(`форма сотрудника: ширина ${width}, клавиатура`, async ({ page }) => {
+  test(`форма сотрудника: ширина ${width}, клавиатура`, async ({
+    page,
+    browserName,
+  }) => {
     await page.setViewportSize({ width, height: 960 });
     await page.goto("/staff");
     await expect(
@@ -173,7 +177,7 @@ for (const width of [768, 1280, 1440]) {
       ).toBe(true);
     }
     await page.getByLabel("Пароль", { exact: true }).focus();
-    await page.keyboard.press("Tab");
+    await page.keyboard.press(tabKey(browserName));
     await expect(
       page.getByRole("button", { name: "Показать пароль" }),
     ).toBeFocused();
@@ -190,6 +194,7 @@ for (const width of [768, 1280, 1440]) {
 
 test("иконка темы открывает диалог: Escape, фокус и клавиатура", async ({
   page,
+  browserName,
 }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/staff");
@@ -198,14 +203,17 @@ test("иконка темы открывает диалог: Escape, фокус 
   const box = await trigger.boundingBox();
   expect(box?.width).toBeGreaterThanOrEqual(44);
   expect(box?.height).toBeGreaterThanOrEqual(44);
-  await trigger.click();
+  // Keyboard opening: WebKit does not focus a clicked button, so focus return is
+  // checked on the keyboard path.
+  await trigger.focus();
+  await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", {
     name: "Тема оформления",
     exact: true,
   });
   await expect(dialog).toBeVisible();
   for (let index = 0; index < 7; index++) {
-    await page.keyboard.press("Tab");
+    await page.keyboard.press(tabKey(browserName));
     expect(
       await dialog.evaluate((element) =>
         element.contains(document.activeElement),

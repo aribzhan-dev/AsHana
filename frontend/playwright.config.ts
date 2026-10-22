@@ -8,5 +8,17 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   reporter: "list",
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // Routine runs use Chromium. The suite creates fixed-name data and uses login limits,
+  // so each other browser runs on its own fresh stand: ASHANA_E2E_BROWSERS=webkit.
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+  ].filter(
+    (p) =>
+      process.env.ASHANA_E2E_BROWSERS === "all" ||
+      (process.env.ASHANA_E2E_BROWSERS ?? "chromium")
+        .split(",")
+        .includes(p.name),
+  ),
 });

@@ -43,6 +43,14 @@ class CatalogService:
                 raise invalid("kind", "В меню доступна только готовая продукция")
             return uow.stock.items(offset, limit, kind=kind)
 
+    def image(self, entry_id: UUID) -> tuple[bytes, str] | None:
+        """Public photo of a published menu entry; no session needed."""
+        with self.uow() as uow:
+            entry = uow.repository.entry(entry_id)
+            if not entry or not entry.published:
+                return None
+            return uow.stock.image(entry.item_id)
+
     def menu(
         self, offset: int = 0, limit: int = 20, upcoming: bool = False
     ) -> tuple[datetime, list[MenuEntry]]:
@@ -112,6 +120,8 @@ class CatalogService:
                 asdict(period),
                 now,
             )
+            if current is None:
+                self._add_permanent(uow, actor, now, [period])
             return Result(period.id, period.version)
 
         return self._write(
@@ -128,6 +138,54 @@ class CatalogService:
             },
             action,
         )
+
+    def _add_permanent(
+        self, uow: CatalogUnitOfWork, actor: UUID, now: datetime, targets: list[Period]
+    ) -> int:
+        """Put every always-on-menu good into the given periods; stock decides visibility."""
+        goods: list[Item] = []
+        offset = 0
+        while page := uow.stock.items(offset, 100, kind="purchased"):
+            goods += [i for i in page if i.always_on_menu and i.sale_price_minor > 0]
+            offset += 100
+        added = 0
+        for period in targets:
+            present = uow.repository.period_items(period.id)
+            for item in goods:
+                if item.id in present:
+                    continue
+                entry = Entry(
+                    uuid4(),
+                    period.id,
+                    item.id,
+                    "",
+                    "1 шт.",
+                    item.sale_price_minor,
+                    True,
+                    1,
+                    actor,
+                    now,
+                    now,
+                    item.name,
+                    item.unit,
+                    item.category[:60],
+                )
+                uow.repository.save_entry(entry, new=True)
+                uow.repository.audit(actor, "entry", entry.id, None, asdict(entry), now)
+                added += 1
+        return added
+
+    def sync_permanent(self, token: str, key: UUID) -> Result:
+        """Add always-on-menu goods to current and future periods that still lack them."""
+
+        def action(uow: CatalogUnitOfWork, actor: UUID, now: datetime) -> Result:
+            targets = uow.repository.open_periods(now)
+            for period in targets:
+                uow.repository.period(period.id, lock=True)
+            self._add_permanent(uow, actor, now, targets)
+            return Result(actor, 1)
+
+        return self._write(token, "catalog_permanent_sync", key, {}, action)
 
     def save_entry(
         self,

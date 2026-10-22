@@ -3,12 +3,13 @@ from datetime import date, datetime
 from typing import Annotated, Literal, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ashana.bootstrap.errors import ErrorResponse
 from ashana.modules.catalog.application.service import CatalogService
 from ashana.modules.identity.presentation.http import enforce_csrf, session_token
+from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.inventory.presentation.http import ItemResponse, OperationResponse
 
 router = APIRouter(
@@ -90,6 +91,13 @@ class PublicMenuEntry(BaseModel):
     portion_label: str
     price_minor: int
     available: int
+    image: str = Field(default="", exclude=True)
+
+    # Addressed by the public entry id: internal item ids stay private.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def image_url(self) -> str:
+        return f"/api/v1/media/menu/{self.id}?v={self.image[:16]}" if self.image else ""
 
 
 class PublicMenuResponse(BaseModel):
@@ -235,6 +243,15 @@ def update_entry(
     )
 
 
+@router.post(
+    "/permanent/sync",
+    operation_id="syncPermanentGoods",
+    dependencies=[Depends(enforce_csrf)],
+)
+def sync_permanent(request: Request, service: Service, key: Key) -> OperationResponse:
+    return OperationResponse(**asdict(service.sync_permanent(session_token(request), key)))
+
+
 @router.get("/items", operation_id="listCatalogItems")
 def items(
     kind: Literal["prepared", "purchased"],
@@ -247,3 +264,29 @@ def items(
         ItemResponse(**asdict(i))
         for i in service.items(session_token(request), kind, offset, limit)
     ]
+
+
+media = APIRouter(prefix="/api/v1/media", tags=["Меню"])
+
+
+@media.get(
+    "/menu/{entry_id}",
+    operation_id="getMenuPhoto",
+    response_class=Response,
+    responses={200: {"content": {"image/webp": {}}}, 404: {"model": ErrorResponse}},
+)
+def menu_photo(entry_id: UUID, request: Request, service: Service) -> Response:
+    found = service.image(entry_id)
+    if not found:
+        raise InventoryError("NOT_FOUND", "Фото не найдено")
+    data, digest = found
+    return Response(
+        content=data,
+        media_type="image/webp",
+        headers={
+            # The URL carries the digest, so a new photo gets a new URL.
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": f'"{digest[:32]}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

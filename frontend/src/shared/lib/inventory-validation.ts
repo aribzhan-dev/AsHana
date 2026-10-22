@@ -51,6 +51,16 @@ export function stockNumber(value: string): string {
     Number(value),
   );
 }
+// Customer-facing price: whole tenge without kopecks, as on menu boards.
+export function shortMoney(minor: number): string {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "KZT",
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: minor % 100 ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(minor / 100);
+}
 export function stockMoney(minor: number): string {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",

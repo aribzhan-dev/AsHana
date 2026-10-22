@@ -21,7 +21,20 @@ function strings(v: unknown): v is Record<string, string> {
 export function parseReport(v: unknown): Report {
   if (
     !record(v) ||
-    !["sales", "production", "stock", "writeoffs"].includes(String(v.kind)) ||
+    ![
+      "sales",
+      "production",
+      "stock",
+      "writeoffs",
+      "top",
+      "abc",
+      "unsold",
+      "returns",
+      "inventory",
+      "expenses",
+      "cashbook",
+      "debts",
+    ].includes(String(v.kind)) ||
     typeof v.generated_at !== "string" ||
     !Number.isFinite(Date.parse(v.generated_at)) ||
     typeof v.note !== "string" ||
@@ -73,6 +86,7 @@ export type DashboardData = {
   totals: Record<string, string>;
   top: Record<string, string>[];
   low: Record<string, string>[];
+  hours: Record<string, string>[];
 };
 export const reportsApi = {
   dashboard: (start: string, end: string): Promise<DashboardData> =>
@@ -84,6 +98,16 @@ export const reportsApi = {
           !Number.isFinite(Date.parse(v.generated_at)) ||
           !strings(v.totals) ||
           Object.values(v.totals).some((n) => !/^[0-9]+$/.test(n))
+        )
+          return invalid();
+        if (
+          !Array.isArray(v.hours) ||
+          v.hours.some(
+            (h) =>
+              !strings(h) ||
+              !/^[0-9]+$/.test(h.hour || "") ||
+              !/^[0-9]+$/.test(h.paid_minor || ""),
+          )
         )
           return invalid();
         for (const key of ["top", "low"])
@@ -109,11 +133,9 @@ export const reportsApi = {
       limit: "20",
     });
     if (filters.item_id) query.set("item_id", filters.item_id);
-    if (kind === "sales") {
-      if (filters.period_id) query.set("period_id", filters.period_id);
-      query.set("channel", filters.channel);
-      query.set("mode", filters.mode);
-    }
+    if (filters.period_id) query.set("period_id", filters.period_id);
+    query.set("channel", filters.channel);
+    query.set("mode", filters.mode);
     return request(`/reports/${kind}?${query}`).then(parseReport);
   },
   options: (target: "items" | "periods", offset = 0): Promise<Option[]> =>

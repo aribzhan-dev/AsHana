@@ -1,3 +1,5 @@
+import { useLiveReload } from "../../shared/lib/live-events";
+import { LiveBadge } from "../../shared/ui/LiveBadge";
 import { receivingApi, type Directory } from "../../shared/api/receiving";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { posApi, type PosInput, type Sale } from "../../shared/api/pos";
@@ -88,9 +90,9 @@ export function PosBoard({
   }, [onExpired]);
   useEffect(() => {
     void Promise.resolve().then(refresh);
-    const timer = window.setInterval(() => void refresh(), 15000);
-    return () => window.clearInterval(timer);
   }, [refresh]);
+  // Online orders, other tills and stock changes update availability at once.
+  const live = useLiveReload(["stock", "pos", "orders"], () => void refresh());
   const total = lines.reduce(
     (n, l) => n + (Number(l.quantity) || 0) * l.entry.price_minor,
     0,
@@ -177,9 +179,12 @@ export function PosBoard({
   return (
     <div className="form-stack pos-board">
       {error && <Alert>{error}</Alert>}
-      <Button variant="secondary" onClick={() => void refresh()}>
-        Обновить кассу
-      </Button>
+      <div className="live-row">
+        <LiveBadge status={live} />
+        <Button variant="secondary" onClick={() => void refresh()}>
+          Обновить кассу
+        </Button>
+      </div>
       {loading ? (
         <LoadingState />
       ) : (
@@ -316,9 +321,6 @@ export function PosBoard({
               </fieldset>
               <p className="pos-total">
                 Итого: <strong>{stockMoney(total)}</strong>
-              </p>
-              <p className="field-hint">
-                Не более 100 порций / штук за продажу.
               </p>
               <Button
                 disabled={busy || (!pending && !valid)}

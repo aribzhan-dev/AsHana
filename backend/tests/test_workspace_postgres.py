@@ -13,9 +13,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_custom_roles_permissions_revocation_audit_and_concurrent_edits(system):
+# The shared administrator token: logins per account are rate limited for the whole run.
+def test_custom_roles_permissions_revocation_audit_and_concurrent_edits(system, operations_admin):
     _, identity, password = system
-    _, token = identity.login("user01", password, "workspace-admin")
+    token = operations_admin
     role = identity.save_role(token, "dispatch", "Выдача", frozenset({"kitchen.read"}), None)
     worker = identity.create_staff(token, "Айша", "dispatch.user", password, frozenset({role.code}))
     assert worker.effective_permissions == {"kitchen.read"}
@@ -64,9 +65,9 @@ def test_custom_roles_permissions_revocation_audit_and_concurrent_edits(system):
     assert any(r.get("role") == ["dispatch"] for r in rows)
 
 
-def test_role_creation_conflict_is_not_overwrite(system):
-    _, identity, password = system
-    _, token = identity.login("user01", password, "role-conflict")
+def test_role_creation_conflict_is_not_overwrite(system, operations_admin):
+    _, identity, _ = system
+    token = operations_admin
     code = "role_" + uuid4().hex[:10]
     identity.save_role(token, code, "Роль", frozenset(), None)
     with pytest.raises(IdentityError, match="код занят"):

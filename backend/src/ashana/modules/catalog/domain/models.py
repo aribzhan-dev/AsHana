@@ -75,3 +75,4 @@ class MenuEntry:
     price_minor: int
     available: int
     category: str = ""
+    image: str = ""

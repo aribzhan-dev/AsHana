@@ -15,9 +15,11 @@ from ashana.modules.pos.infrastructure.database import PostgresPosUnitOfWork
 def pos_service(
     engine: Engine, identity: IdentityService, orders: OrderService, *, enabled: bool = True
 ) -> PosService:
-    def authorize(connection: Connection, token: str) -> UUID:
+    def authorize(connection: Connection, token: str, permission: str) -> UUID:
         principal = identity.principal(PostgresIdentityRepository(connection), token)
         principal.require("pos.sell")
+        if permission != "pos.sell":
+            principal.require(permission)
         return principal.user.id
 
     return PosService(
