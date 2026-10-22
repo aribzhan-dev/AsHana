@@ -18,7 +18,7 @@ import {
 } from "../../shared/lib/inventory-validation";
 import { inventoryRu as t } from "../../shared/locales/inventory";
 import { Input, Select } from "../../shared/ui/Input";
-import { Button } from "../../shared/ui/Button";
+import { Button, IconButton } from "../../shared/ui/Button";
 import {
   Badge,
   Card,
@@ -187,13 +187,15 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
                         .includes(query.toLocaleLowerCase("ru")),
                   )
                   .map((item) => (
-                    <li key={item.id}>
-                      <strong>{item.name}</strong>
-                      <span>
-                        {t.kinds[item.kind]} · {t.units[item.unit]}
-                        {item.barcode ? ` · ${item.barcode}` : ""}
-                      </span>
-                      <div className="button-row">
+                    <li key={item.id} className="product-list-row">
+                      <div className="product-list-info">
+                        <strong>{item.name}</strong>
+                        <span>
+                          {t.kinds[item.kind]} · {t.units[item.unit]}
+                          {item.barcode ? ` · ${item.barcode}` : ""}
+                        </span>
+                      </div>
+                      <div className="product-list-actions">
                         <DetailsButton title={item.name}>
                           <dl className="stock-meta">
                             <div>
@@ -222,12 +224,12 @@ export function InventoryBoard({ onExpired }: { onExpired: () => void }) {
                             </div>
                           </dl>
                         </DetailsButton>
-                        <Button
+                        <IconButton
                           variant="secondary"
+                          icon="edit"
+                          label={`Редактировать: ${item.name}`}
                           onClick={() => setItemEditor({ previous: item })}
-                        >
-                          Редактировать
-                        </Button>
+                        />
                       </div>
                     </li>
                   ))}

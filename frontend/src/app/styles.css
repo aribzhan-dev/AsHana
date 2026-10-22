@@ -1929,3 +1929,37 @@ a.button-primary {
     animation: none;
   }
 }
+
+.stock-items .product-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+}
+.product-list-info {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.product-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+@media (max-width: 480px) {
+  .stock-items .product-list-row {
+    gap: 10px;
+  }
+  .product-list-actions {
+    gap: 6px;
+  }
+  .product-list-actions .icon-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    padding: 10px;
+  }
+}

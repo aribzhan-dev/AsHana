@@ -106,7 +106,10 @@ test("накладная: товар внутри формы, штрихкод, 
     .locator(".stock-items li")
     .filter({ hasText: "Напиток со штрихкодом UI" });
   await product
-    .getByRole("button", { name: "Редактировать", exact: true })
+    .getByRole("button", {
+      name: "Редактировать: Напиток со штрихкодом UI",
+      exact: true,
+    })
     .click();
   dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("Категория", { exact: true })).toHaveValue(

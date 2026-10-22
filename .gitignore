@@ -47,10 +47,10 @@ junit*.xml
 .vscode/
 *.tsbuildinfo
 # Private planning and AI documents; publishing requires owner approval.
-/docs/
-/tasks/
-/.claude/
-/.agents/
-/AGENTS.md
-/CLAUDE.md
-/README.md
+# /docs/
+# /tasks/
+# /.claude/
+# /.agents/
+# /AGENTS.md
+# /CLAUDE.md
+# /README.md
