@@ -50,6 +50,7 @@ def order_service(engine: Engine, identity: IdentityService, settings: Settings)
             settings.order_cutoff_minutes,
             settings.order_slot_minutes,
             settings.order_slot_capacity,
+            settings.order_pickup_grace_minutes,
         ),
         allow_request=allow_request,
     )

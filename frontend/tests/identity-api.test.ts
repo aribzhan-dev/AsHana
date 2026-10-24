@@ -40,6 +40,7 @@ it("связывает изменение с CSRF и проверяет конт
           phone: null,
           name: "Әлия",
           is_demo: true,
+          is_active: true,
           roles: ["kitchen"],
           permissions: ["kitchen.read"],
         }),

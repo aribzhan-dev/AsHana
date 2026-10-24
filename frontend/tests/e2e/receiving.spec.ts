@@ -101,7 +101,28 @@ test("накладная: товар внутри формы, штрихкод, 
   await expect(
     page.getByRole("heading", { name: "Настройки", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".stock-items")).toContainText("Перевод UI");
+  const settings = page.locator(".staff-directory");
+  await expect(settings).toContainText("Перевод UI");
+  // A used entry shows where it is used and can only be renamed.
+  await page.getByRole("button", { name: "Просмотр: Перевод UI" }).click();
+  let entry = page.getByRole("dialog");
+  await expect(entry).toContainText("Накладные");
+  await expect(entry.getByRole("button", { name: "Удалить" })).toBeDisabled();
+  await entry.getByRole("button", { name: "Изменить" }).click();
+  await entry.getByLabel("Название").fill("Перевод UI (банк)");
+  await entry.getByRole("button", { name: "Сохранить" }).click();
+  await expect(entry).toHaveCount(0);
+  await expect(settings).toContainText("Перевод UI (банк)");
+  // An unused entry can be deleted after confirmation.
+  await page.getByLabel("Название").fill("Временный UI");
+  await page.getByRole("button", { name: "Создать" }).click();
+  await expect(settings).toContainText("Временный UI");
+  await page.getByRole("button", { name: "Удалить: Временный UI" }).click();
+  entry = page.getByRole("dialog");
+  await expect(entry).toContainText("нигде не используется");
+  await entry.getByRole("button", { name: "Удалить" }).click();
+  await expect(entry).toHaveCount(0);
+  await expect(settings).not.toContainText("Временный UI");
   await page.goto("/staff/products");
   await expect(page.getByRole("form", { name: "Создать товар" })).toHaveCount(
     0,

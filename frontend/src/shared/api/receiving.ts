@@ -3,6 +3,8 @@ import { request, record, ApiError } from "./http";
 import { operation } from "./inventory";
 export type Directory = components["schemas"]["DirectoryResponse"];
 export type DirectoryKind = Directory["kind"];
+export type DirectoryDetails =
+  components["schemas"]["DirectoryDetailsResponse"];
 export type PurchaseKind = Exclude<
   DirectoryKind,
   "category" | "expense_category"
@@ -38,6 +40,27 @@ export const receivingApi = {
       "/inventory/directories",
       "POST",
       { kind, name },
+      { "Idempotency-Key": key },
+    ).then(operation),
+  // Preview: the entry with the places that use it (invoices, sales, goods...).
+  directory: (id: string) =>
+    request(`/inventory/directories/${encodeURIComponent(id)}`).then((v) => {
+      if (!record(v) || typeof v.name !== "string" || !record(v.usage))
+        throw new ApiError(0, "Не удалось прочитать запись");
+      return v as DirectoryDetails;
+    }),
+  renameDirectory: (id: string, name: string, key: string) =>
+    request(
+      `/inventory/directories/${encodeURIComponent(id)}`,
+      "PUT",
+      { name },
+      { "Idempotency-Key": key },
+    ).then(operation),
+  deleteDirectory: (id: string, key: string) =>
+    request(
+      `/inventory/directories/${encodeURIComponent(id)}`,
+      "DELETE",
+      undefined,
       { "Idempotency-Key": key },
     ).then(operation),
   invoices: (offset = 0) =>

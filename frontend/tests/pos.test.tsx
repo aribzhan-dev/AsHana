@@ -51,6 +51,7 @@ beforeEach(() => {
       name: "Наличные",
       kind: "payment_method",
       commission_bp: 0,
+      system: false,
     },
   ]);
   vi.spyOn(posApi, "menu").mockResolvedValue([entry]);

@@ -26,8 +26,9 @@ describe("Проверки данных сотрудника", () => {
     expect(nameError("О’Коннор")).toBeUndefined();
     expect(nameError("A\n")).toBeTruthy();
     expect(nameError("Анна2")).toBeTruthy();
-    expect(passwordError(" ".repeat(12))).toBeUndefined();
-    expect(passwordError("короткий")).toBeTruthy();
+    expect(passwordError(" ".repeat(4))).toBeUndefined();
+    expect(passwordError("ari1234")).toBeUndefined();
+    expect(passwordError("abc")).toBeTruthy();
   });
   it("переключает видимость без отправки формы и потери значения", async () => {
     const user = userEvent.setup();

@@ -13,6 +13,8 @@ class OrderPolicy:
     cutoff_minutes: int = 15
     slot_minutes: int = 10
     slot_capacity: int = 10
+    # A paid order nobody picked up this long after its slot becomes "no_show".
+    pickup_grace_minutes: int = 60
 
 
 @dataclass(frozen=True)

@@ -160,6 +160,28 @@ requests = Table(
 )
 
 
+# Where a settings entry is used: (label, table, condition with :id or :name).
+DIRECTORY_USAGE: dict[str, list[tuple[str, str, str]]] = {
+    "supplier": [("Накладные", "inventory_invoices", "supplier_id = :id")],
+    "warehouse": [
+        ("Партии на складе", "inventory_batches", "warehouse_id = :id"),
+        ("Накладные", "inventory_invoices", "warehouse_id = :id"),
+    ],
+    "payment_method": [
+        ("Накладные", "inventory_invoices", "payment_method_id = :id"),
+        ("Оплаты поставщикам", "inventory_invoice_payments", "payment_method_id = :id"),
+        ("Продажи на кассе", "pos_attempts", "payment_method_id = :id"),
+        ("Расходы", "finance_expenses", "payment_method_id = :id"),
+        ("Дивиденды", "finance_dividends", "payment_method_id = :id"),
+        ("Выплаты зарплаты", "payroll_payments", "payment_method_id = :id"),
+    ],
+    "expense_category": [("Расходы", "finance_expenses", "category_id = :id")],
+    "category": [
+        ("Товары", "inventory_items", "lower(category) = :name"),
+        ("Позиции меню", "catalog_entries", "lower(category) = :name"),
+        ("Планы продаж", "finance_sales_plans", "lower(category) = :name"),
+    ],
+}
 directories = Table(
     "inventory_directories",
     metadata,
@@ -235,6 +257,55 @@ class PostgresInventoryRepository:
             )
         except IntegrityError:
             raise InventoryError("DIRECTORY_EXISTS", "Такое название уже существует") from None
+
+    def directory(self, id: UUID, *, lock: bool = False) -> DirectoryEntry | None:
+        query = select(directories).where(directories.c.id == id)
+        row = self.connection.execute(query.with_for_update() if lock else query).first()
+        return DirectoryEntry(row.id, row.kind, row.name, row.commission_bp) if row else None
+
+    def directory_usage(self, entry: DirectoryEntry) -> dict[str, int]:
+        # Russian labels go straight to the settings screen; only non-zero counts are returned.
+        places = DIRECTORY_USAGE[entry.kind]
+        if not places:
+            return {}
+        sql = " UNION ALL ".join(
+            f"SELECT :label{n} AS label, count(*) AS n FROM {table} WHERE {condition}"
+            for n, (_, table, condition) in enumerate(places)
+        )
+        params: dict[str, object] = {"id": entry.id, "name": entry.name.casefold()}
+        params.update({f"label{n}": label for n, (label, _, _) in enumerate(places)})
+        return {
+            row.label: int(row.n) for row in self.connection.execute(text(sql), params) if row.n
+        }
+
+    def rename_directory(self, entry: DirectoryEntry, name: str) -> None:
+        try:
+            self.connection.execute(
+                directories.update()
+                .where(directories.c.id == entry.id)
+                .values(name=name, name_key=name.casefold())
+            )
+        except IntegrityError:
+            raise InventoryError("DIRECTORY_EXISTS", "Такое название уже существует") from None
+        if entry.kind == "category":
+            # Goods, menu entries and plans keep the category as text: rename it everywhere.
+            for table in ("inventory_items", "catalog_entries", "finance_sales_plans"):
+                self.connection.execute(
+                    text(
+                        f"UPDATE {table} SET category = :new, version = version + 1"
+                        " WHERE lower(category) = :old"
+                    ),
+                    {"new": name, "old": entry.name.casefold()},
+                )
+
+    def delete_directory(self, entry: DirectoryEntry) -> None:
+        try:
+            self.connection.execute(directories.delete().where(directories.c.id == entry.id))
+        except IntegrityError:
+            # A concurrent invoice or sale referenced the entry after the usage check.
+            raise InventoryError(
+                "DIRECTORY_IN_USE", "Запись уже используется — её можно только переименовать"
+            ) from None
 
     def _invoice_query(self) -> Select[Any]:
         later = (

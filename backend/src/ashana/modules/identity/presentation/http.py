@@ -77,6 +77,7 @@ class LoginInput(InputModel):
 class StaffInput(LoginInput):
     nickname: str = Field(default="", max_length=100)
     phone: str | None = Field(default=None, max_length=32)
+    telegram: str | None = Field(default=None, max_length=60)
     name: str = Field(min_length=1, max_length=100)
     roles: list[str] = Field(min_length=1, max_length=100)
 
@@ -102,6 +103,9 @@ class UserResponse(BaseModel):
     roles: list[str]
     permissions: list[str]
     is_demo: bool
+    telegram: str | None = None
+    is_active: bool = True
+    created_at: datetime | None = None
 
     @classmethod
     def from_user(cls, user: User) -> "UserResponse":
@@ -114,6 +118,9 @@ class UserResponse(BaseModel):
             roles=sorted(user.roles),
             permissions=sorted(user.effective_permissions),
             is_demo=user.is_demo,
+            telegram=user.telegram,
+            is_active=user.is_active,
+            created_at=user.created_at,
         )
 
 
@@ -235,6 +242,7 @@ def create_staff(data: StaffInput, request: Request, service: Service) -> UserRe
             parse_roles(data.roles),
             phone=data.phone,
             nickname=data.nickname,
+            telegram=data.telegram,
         )
     )
 
@@ -249,6 +257,76 @@ def assign_roles(
 ) -> UserResponse:
     return UserResponse.from_user(
         service.assign_roles(session_token(request), user_id, parse_roles(data.roles))
+    )
+
+
+class ProfileInput(InputModel):
+    name: str = Field(min_length=1, max_length=100)
+    phone: str | None = Field(default=None, max_length=32)
+    telegram: str | None = Field(default=None, max_length=60)
+    nickname: str = Field(default="", max_length=100)
+
+
+class StatusInput(InputModel):
+    active: bool
+
+
+@router.get("/admin/users/{user_id}", operation_id="getStaff")
+def staff_member(user_id: UUID, request: Request, service: Service) -> UserResponse:
+    return UserResponse.from_user(service.staff_member(session_token(request), user_id))
+
+
+@router.put(
+    "/admin/users/{user_id}/profile",
+    operation_id="updateStaffProfile",
+    dependencies=[Depends(enforce_csrf)],
+)
+def update_profile(
+    user_id: UUID, data: ProfileInput, request: Request, service: Service
+) -> UserResponse:
+    return UserResponse.from_user(
+        service.update_profile(
+            session_token(request), user_id, data.name, data.phone, data.telegram, data.nickname
+        )
+    )
+
+
+@router.put(
+    "/admin/users/{user_id}/status",
+    operation_id="setStaffStatus",
+    dependencies=[Depends(enforce_csrf)],
+)
+def set_status(
+    user_id: UUID, data: StatusInput, request: Request, service: Service
+) -> UserResponse:
+    return UserResponse.from_user(service.set_active(session_token(request), user_id, data.active))
+
+
+@router.delete(
+    "/admin/users/{user_id}",
+    operation_id="deleteStaff",
+    status_code=204,
+    dependencies=[Depends(enforce_csrf)],
+)
+def delete_staff(user_id: UUID, request: Request, service: Service) -> Response:
+    service.delete_staff(session_token(request), user_id)
+    return Response(status_code=204)
+
+
+class PasswordResetInput(InputModel):
+    password: SecretStr = Field(min_length=1, max_length=128)
+
+
+@router.put(
+    "/admin/users/{user_id}/password",
+    operation_id="resetStaffPassword",
+    dependencies=[Depends(enforce_csrf)],
+)
+def reset_password(
+    user_id: UUID, data: PasswordResetInput, request: Request, service: Service
+) -> UserResponse:
+    return UserResponse.from_user(
+        service.reset_password(session_token(request), user_id, data.password.get_secret_value())
     )
 
 

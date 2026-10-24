@@ -106,6 +106,10 @@ export function CardPayment({
           </button>
         </p>
         {error && <Alert>{error}</Alert>}
+        <p className="field-hint">
+          Заказы с сайта оплачиваются только картой. После оплаты заказ нельзя
+          отменить, деньги не возвращаются.
+        </p>
         <Button type="submit" loading={busy} className="full-width">
           Оплатить {shortMoney(total)}
         </Button>

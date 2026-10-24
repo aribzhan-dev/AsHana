@@ -325,6 +325,19 @@ class PostgresOrderRepository:
             ).scalars()
         )
 
+    def overdue(self, before: datetime, limit: int) -> list[UUID]:
+        return list(
+            self.connection.execute(
+                select(drafts.c.id)
+                .where(
+                    drafts.c.status.in_(("confirmed", "preparing", "ready")),
+                    drafts.c.slot_ends_at <= before,
+                )
+                .order_by(drafts.c.slot_ends_at)
+                .limit(limit)
+            ).scalars()
+        )
+
     def replay(self, actor: UUID, operation: str, key: UUID, fingerprint: str) -> UUID | None:
         lock_id = int.from_bytes(
             hashlib.sha256(f"order:{actor}:{operation}:{key}".encode()).digest()[:8], signed=True
@@ -370,6 +383,7 @@ class PostgresOrderRepository:
             "preparing": "👨‍🍳 Заказ собирается",
             "ready": "✅ Заказ готов к выдаче",
             "completed": "📦 Заказ выдан",
+            "no_show": "⌛ Заказ не забрали, оплата не возвращается",
         }
         zone = ZoneInfo("Asia/Almaty")
         starts = order.slot_starts_at.astimezone(zone)
@@ -384,7 +398,7 @@ class PostgresOrderRepository:
             f"{lines}\n"
             f"Итого: {tenge(order.total_minor)} · оплата тестовая"
         )
-        if kind in ("confirmed", "paid_cancelled", "preparing", "ready", "completed"):
+        if kind in ("confirmed", "paid_cancelled", "preparing", "ready", "completed", "no_show"):
             self.notifications.enqueue(event_id, message, now, order.id)
         self.connection.execute(
             events.insert().values(

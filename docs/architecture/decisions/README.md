@@ -34,3 +34,4 @@
 - [0020 — живые экраны кухни и кассы через WebSocket](0020-live-staff-screens.md)
 - [0021 — финансы месяца и зарплата](0021-finance-and-payroll.md)
 - [0022 — живая страница гостя и фото блюд](0022-guest-live-and-photos.md)
+- [0023 — без возврата за заказы с сайта, «Не забрали», сброс пароля](0023-no-refunds-no-show-password-reset.md)

@@ -4,7 +4,7 @@ from sqlalchemy.pool import NullPool
 
 from ashana.bootstrap.settings import Settings
 
-SCHEMA_REVISION = "0018_item_images"
+SCHEMA_REVISION = "0020_staff_profile"
 
 
 def create_database_engine(settings: Settings) -> Engine:

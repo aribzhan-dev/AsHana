@@ -189,6 +189,16 @@ class DirectoryEntry:
     name: str
     commission_bp: int = 0
 
+    @property
+    def system(self) -> bool:
+        # The main warehouse and online payment are referenced by code; they can be renamed only.
+        return self.id in SYSTEM_DIRECTORIES
+
+
+SYSTEM_DIRECTORIES = frozenset(
+    {UUID("00000000-0000-0000-0000-000000000001"), UUID("00000000-0000-0000-0000-000000000004")}
+)
+
 
 @dataclass(frozen=True)
 class InvoiceLine:

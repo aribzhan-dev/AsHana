@@ -33,6 +33,9 @@ function staff(value: unknown): Staff {
     is_demo: value.is_demo,
     permissions: value.permissions,
     roles: value.roles as Role[],
+    telegram: typeof value.telegram === "string" ? value.telegram : null,
+    is_active: value.is_active !== false,
+    created_at: typeof value.created_at === "string" ? value.created_at : null,
   };
 }
 function sessionList(value: unknown): StaffSession[] {
@@ -100,4 +103,22 @@ export const identityApi = {
     }).then(staff),
   roles: (id: string, roles: Role[]) =>
     request(`/admin/users/${id}/roles`, "PUT", { roles }).then(staff),
+  member: (id: string) =>
+    request(`/admin/users/${encodeURIComponent(id)}`).then(staff),
+  profile: (id: string, body: components["schemas"]["ProfileInput"]) =>
+    request(`/admin/users/${encodeURIComponent(id)}/profile`, "PUT", body).then(
+      staff,
+    ),
+  // Blocked employees are signed out everywhere and cannot log in.
+  status: (id: string, active: boolean) =>
+    request(`/admin/users/${encodeURIComponent(id)}/status`, "PUT", {
+      active,
+    }).then(staff),
+  // Archives the account: history keeps the name, the login stays taken.
+  remove: async (id: string) => {
+    await request(`/admin/users/${encodeURIComponent(id)}`, "DELETE");
+  },
+  // An administrator sets a new password when an employee forgot theirs.
+  resetPassword: (id: string, password: string) =>
+    request(`/admin/users/${id}/password`, "PUT", { password }).then(staff),
 };

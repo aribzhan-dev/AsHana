@@ -30,6 +30,7 @@ from ashana.modules.orders.infrastructure.database import (
     PostgresOrderRepository,
     drafts,
     orders,
+    payment_attempts,
     slots,
 )
 
@@ -456,8 +457,9 @@ def test_payment_creates_order_only_after_success_and_once(order_system: System)
             ).scalar_one()
             == 1
         )
-    cancelled = s.service.cancel(guest, checkout.id)
-    assert cancelled.status == "cancelled"
+    # Site orders are never refunded once paid.
+    with pytest.raises(InventoryError, match="нельзя отменить"):
+        s.service.cancel(guest, checkout.id)
 
 
 def test_payment_races_expiry_without_creating_late_order(order_system: System) -> None:
@@ -578,7 +580,10 @@ def test_staff_orders_prioritize_pickup_time_over_creation(order_system: System)
     s.service.mock_payment(guest, earlier.id, uuid4(), "success")
     ids = [order.id for order in s.service.staff_orders(s.token, limit=100)]
     assert ids.index(earlier.id) < ids.index(later.id)
-    s.service.cancel(guest, earlier.id)
+    done = ready_for_serving(s, s.service.staff_order(s.token, earlier.id), s.token)
+    s.service.transition(
+        s.token, done.id, uuid4(), "completed", done.version, done.pickup_code or ""
+    )
     ids = [order.id for order in s.service.staff_orders(s.token, limit=100)]
     assert ids.index(later.id) < ids.index(earlier.id)
 
@@ -706,28 +711,48 @@ def test_serving_rollback_after_event_keeps_ready_stock_and_retry(
     )
 
 
-def test_serving_cancel_vs_begin_is_atomic(order_system: System) -> None:
+def test_paid_order_is_never_refunded_and_becomes_no_show(order_system: System) -> None:
+    """Owner's rule: no refunds for site orders; unclaimed food goes back on sale."""
     s = order_system
     guest, order, batch = paid_for_serving(s)
-
-    def act(cancel: bool) -> Order | str:
-        try:
-            return (
-                s.service.cancel(guest, order.id)
-                if cancel
-                else s.service.transition(s.token, order.id, uuid4(), "preparing", order.version)
-            )
-        except InventoryError as exc:
-            return exc.code
-
-    with ThreadPoolExecutor(2) as pool:
-        results = list(pool.map(act, (True, False)))
-    assert sum(isinstance(r, Order) for r in results) == 1
-    state = s.service.own_orders(guest)[0].status
+    with pytest.raises(InventoryError, match="нельзя отменить"):
+        s.service.cancel(guest, order.id)
+    order = ready_for_serving(s, order, s.token)
+    original = s.service.clock
+    try:
+        s.service.clock = lambda: order.slot_ends_at + timedelta(minutes=59)
+        s.service.expire()
+        assert s.service.staff_order(s.token, order.id).status == "ready"
+        s.service.clock = lambda: order.slot_ends_at + timedelta(minutes=60)
+        # Older paid orders of this database are processed too, 100 per pass.
+        for _ in range(20):
+            s.service.expire()
+            if s.service.staff_order(s.token, order.id).status == "no_show":
+                break
+        assert s.service.staff_order(s.token, order.id).status == "no_show"
+    finally:
+        s.service.clock = original
     with s.engine.connect() as connection:
         row = connection.execute(select(batches).where(batches.c.id == batch)).mappings().one()
-        assert row["on_hand"] == 10
-        assert row["reserved"] == (0 if state == "cancelled" else 2)
+        assert row["on_hand"] == 10 and row["reserved"] == 0
+        outcomes = set(
+            connection.execute(
+                select(payment_attempts.c.outcome).where(payment_attempts.c.checkout_id == order.id)
+            ).scalars()
+        )
+        assert outcomes == {"success"}
+        assert (
+            connection.execute(
+                select(func.count())
+                .select_from(outbox)
+                .where(outbox.c.subject_id == order.id, outbox.c.text.like("⌛%"))
+            ).scalar_one()
+            == 1
+        )
+    with pytest.raises(InventoryError):
+        s.service.transition(
+            s.token, order.id, uuid4(), "completed", order.version + 1, order.pickup_code or ""
+        )
 
 
 def test_serving_permissions_code_csrf_and_no_code_in_staff_dto(

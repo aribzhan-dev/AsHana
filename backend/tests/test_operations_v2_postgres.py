@@ -177,6 +177,12 @@ def test_counter_return_restock_limits_replay_and_race(
         ).scalar_one() == Decimal(1)
     pos.return_sale(s.token, uuid4(), sale.id, {entry: 1}, "Пролили", "write_off")
     assert on_hand(s, batch) == 3
+    # Returns exist only at the till and only for till sales: a paid site order is not one.
+    online_entry, slot, _ = s.setup("5")
+    guest = s.guest()
+    online = s.service.mock_payment(guest, s.buy(guest, online_entry, slot).id, uuid4(), "success")
+    with pytest.raises(InventoryError, match="продажа не найдена"):
+        pos.return_sale(s.token, uuid4(), online.id, {online_entry: 1}, "С сайта", "restock")
     with pytest.raises(InventoryError, match="больше проданного"):
         pos.return_sale(s.token, uuid4(), sale.id, {entry: 2}, "Ещё", "write_off")
 

@@ -3,7 +3,7 @@ import { selectTheme } from "./theme-helper";
 import { orderDish, payWithTestCard } from "./guest-helper";
 import { orderNumber } from "../../src/shared/lib/pickup-qr";
 test.use({ trace: "off", screenshot: "off", video: "off" });
-test("оплата предшествует заказу; гость, кухня, отмена и мобильные темы", async ({
+test("оплата предшествует заказу; гость, кухня, без возврата и мобильные темы", async ({
   page,
   browser,
 }, testInfo) => {
@@ -76,17 +76,11 @@ test("оплата предшествует заказу; гость, кухня
         });
     }
   }
-  await draft
-    .getByRole("button", { name: "Отменить заказ", exact: true })
-    .click();
-  await expect(
-    page
-      .locator(".order-card")
-      .filter({ hasText: "Обед для заказа из браузера" })
-      .last(),
-  ).toContainText("Отменён");
+  // A paid site order is never cancelled or refunded.
+  await expect(draft.getByRole("button", { name: /Отменить/ })).toHaveCount(0);
+  await expect(draft).toContainText("деньги не возвращаются");
   await staff.getByRole("button", { name: "Обновить заказы" }).click();
-  await expect(staffCard).toHaveCount(0);
+  await expect(staffCard).toContainText("Принят");
   const other = await browser.newContext({
     baseURL: testInfo.project.use.baseURL,
   });

@@ -39,6 +39,8 @@ users = Table(
     Column("is_active", Boolean, nullable=False),
     Column("is_demo", Boolean, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("telegram", String(33), nullable=True),
+    Column("deleted_at", DateTime(timezone=True), nullable=True),
     CheckConstraint("phone ~ '^\\+7[0-9]{10}$'", name="ck_identity_phone"),
     CheckConstraint("char_length(name) BETWEEN 1 AND 100", name="ck_identity_name"),
 )
@@ -119,6 +121,8 @@ class PostgresIdentityRepository:
             row["is_demo"],
             permissions,
             row["nickname"],
+            row["telegram"],
+            row["deleted_at"],
         )
 
     def find_user(self, login: str, *, lock: bool = False) -> User | None:
@@ -141,6 +145,7 @@ class PostgresIdentityRepository:
                 phone=user.phone,
                 name=user.name,
                 nickname=user.nickname,
+                telegram=user.telegram,
                 password_hash=user.password_hash,
                 created_at=user.created_at,
                 is_active=user.is_active,
@@ -149,6 +154,25 @@ class PostgresIdentityRepository:
         )
         self.connection.execute(
             user_roles.insert(), [{"user_id": user.id, "role": str(role)} for role in user.roles]
+        )
+
+    def update_profile(
+        self, user_id: UUID, name: str, phone: str | None, telegram: str | None, nickname: str
+    ) -> None:
+        self.connection.execute(
+            users.update()
+            .where(users.c.id == user_id)
+            .values(name=name, phone=phone, telegram=telegram, nickname=nickname)
+        )
+
+    def set_active(self, user_id: UUID, active: bool) -> None:
+        self.connection.execute(
+            users.update().where(users.c.id == user_id).values(is_active=active)
+        )
+
+    def archive_user(self, user_id: UUID, now: datetime) -> None:
+        self.connection.execute(
+            users.update().where(users.c.id == user_id).values(is_active=False, deleted_at=now)
         )
 
     def update_nickname(self, user_id: UUID, nickname: str) -> None:
@@ -196,7 +220,11 @@ class PostgresIdentityRepository:
     def list_users(self, offset: int, limit: int) -> list[User]:
         rows = (
             self.connection.execute(
-                select(users).order_by(users.c.name, users.c.id).offset(offset).limit(limit)
+                select(users)
+                .where(users.c.deleted_at.is_(None))
+                .order_by(users.c.name, users.c.id)
+                .offset(offset)
+                .limit(limit)
             )
             .mappings()
             .all()

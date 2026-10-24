@@ -12,6 +12,7 @@ const user: Staff = {
   phone: null,
   roles: ["manager"],
   is_demo: true,
+  is_active: true,
   nickname: "",
   permissions: ["reporting.read", "pos.sell"],
 };

@@ -3429,3 +3429,45 @@ select {
   font-weight: 600;
   font-size: 14px;
 }
+
+.row-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.directory-usage {
+  display: flex !important;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.staff-details {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+.staff-details > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.staff-details dt {
+  color: var(--muted);
+}
+.staff-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.status-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid currentColor;
+  vertical-align: middle;
+}

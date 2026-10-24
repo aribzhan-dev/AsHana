@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     order_max_active: int = Field(default=2, ge=1, le=20)
     order_max_portions: int = Field(default=10, ge=1, le=100)
     order_reservation_seconds: int = Field(default=300, ge=60, le=1800)
+    order_pickup_grace_minutes: int = Field(default=60, ge=0, le=1440)
 
     @property
     def guest_cookie(self) -> str:

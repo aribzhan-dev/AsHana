@@ -16,6 +16,7 @@ from ashana.bootstrap.app import create_app
 from ashana.bootstrap.pos import pos_service
 from ashana.bootstrap.reporting import reporting_service
 from ashana.modules.identity.domain.models import IdentityError, Role
+from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.orders.domain.models import Choice
 from ashana.modules.reporting.domain.models import ReportFilter
 
@@ -54,7 +55,8 @@ def test_reports_sales_events_modes_channels_and_pagination(report_system: Syste
         s.service.transition(s.token, paid.id, key, "completed", ready.version, ready.pickup_code)
     second = s.buy(guest, entry, slot, 2)
     s.service.mock_payment(guest, second.id, uuid4(), "success")
-    s.service.cancel(guest, second.id)
+    with pytest.raises(InventoryError, match="нельзя отменить"):
+        s.service.cancel(guest, second.id)
     pending_cancel = s.buy(guest, entry, slot)
     s.service.cancel(guest, pending_cancel.id)
     pos = pos_service(s.engine, system[1], s.service)
@@ -65,7 +67,7 @@ def test_reports_sales_events_modes_channels_and_pagination(report_system: Syste
     assert report.totals == {
         "paid_minor": str(6 * 12345),
         "issued_minor": str(4 * 12345),
-        "refund_minor": str(2 * 12345),
+        "refund_minor": "0",
     }
     assert report.unit_totals["pcs"]["issued_quantity"] == "4"
     page2 = reports.read(s.token, "sales", filters, offset=1, limit=1)
@@ -73,7 +75,7 @@ def test_reports_sales_events_modes_channels_and_pagination(report_system: Syste
     online = reports.read(
         s.token, "sales", replace(filters, channel="online", period_id=card.period_id)
     )
-    assert online.rows[0]["cancelled_quantity"] == "3"
+    assert online.rows[0]["cancelled_quantity"] == "1"
     assert online.totals["paid_minor"] == str(3 * 12345)
     assert reports.read(s.token, "sales", replace(filters, mode="real")).total_rows == 0
     assert reports.read(s.token, "sales", replace(filters, period_id=uuid4())).total_rows == 0

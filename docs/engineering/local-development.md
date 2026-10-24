@@ -197,9 +197,9 @@ python3 -I scripts/load_test.py --url http://127.0.0.1:8080 --users 50 --request
 лимита запросов; при 20 одновременных оформлениях пул из 10 соединений блокировался и все
 запросы падали. Теперь лимит пишется через отдельное соединение без пула, пул API — 10 + 10
 с ожиданием до 10 секунд.
-Другие браузеры: `ASHANA_E2E_BROWSERS=webkit` (или `firefox`) перед `check_foundation.py`,
-после `pnpm exec playwright install webkit firefox`. Каждый браузер — отдельным запуском на
+Показ проекта — в Google Chrome: `ASHANA_E2E_BROWSERS=chrome` перед `check_foundation.py`
+запускает E2E в установленном Chrome; `webkit` — Safari-движок (`pnpm exec playwright install webkit`).
+Firefox не поддерживается (решение владельца 24.10.2026). Каждый браузер — отдельным запуском на
 свежем стенде: тесты создают данные с постоянными именами и расходуют лимит входов
 (10 за 15 минут на аккаунт), поэтому `all` на одном стенде даёт ложные ошибки.
-На macOS 27.0.1 Firefox 157 из Playwright не запускается («Could not find profile folder»,
-даже при прямом запуске) — это ограничение сборки браузера, не приложения.
+(Firefox 157 из Playwright к тому же не запускается на macOS 27.0.1.)

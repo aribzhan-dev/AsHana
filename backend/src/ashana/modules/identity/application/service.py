@@ -23,6 +23,7 @@ from ashana.modules.identity.domain.models import (
     normalize_login,
     normalize_name,
     normalize_nickname,
+    normalize_telegram,
     validate_password,
 )
 
@@ -149,7 +150,7 @@ class IdentityService:
             principal = self._principal(uow, token)
             principal.require("identity.manage")
             user = uow.repository.find_user(normalize_login(login))
-            if not user:
+            if not user or user.deleted_at:
                 raise IdentityError("NOT_FOUND", "Сотрудник не найден")
             return user
 
@@ -207,12 +208,14 @@ class IdentityService:
         roles: frozenset[str],
         phone: str | None = None,
         nickname: str = "",
+        telegram: str | None = None,
     ) -> User:
         # Authorize before expensive hashing, then recheck under the role-change lock.
         self.authenticate(token).require("identity.manage")
         user = replace(
             self._new_user(name, login, password, roles, phone),
             nickname=normalize_nickname(nickname),
+            telegram=normalize_telegram(telegram),
         )
         with self.uow() as uow:
             uow.repository.lock_role_changes()
@@ -271,6 +274,126 @@ class IdentityService:
             result = uow.repository.user_by_id(user_id) or replace(target, roles=roles)
             uow.commit()
             return result
+
+    def staff_member(self, token: str, user_id: UUID) -> User:
+        with self.uow() as uow:
+            self._principal(uow, token).require("identity.manage")
+            user = uow.repository.user_by_id(user_id)
+            if not user or user.deleted_at:
+                raise IdentityError("NOT_FOUND", "Сотрудник не найден")
+            return user
+
+    def update_profile(
+        self,
+        token: str,
+        user_id: UUID,
+        name: str,
+        phone: str | None,
+        telegram: str | None,
+        nickname: str,
+    ) -> User:
+        name = normalize_name(name)
+        phone = self.phones.normalize(phone) if phone and phone.strip() else None
+        telegram = normalize_telegram(telegram)
+        nickname = normalize_nickname(nickname)
+        with self.uow() as uow:
+            principal = self._principal(uow, token)
+            principal.require("identity.manage")
+            target = uow.repository.user_by_id(user_id, lock=True)
+            if not target or target.deleted_at:
+                raise IdentityError("NOT_FOUND", "Сотрудник не найден")
+            uow.repository.update_profile(user_id, name, phone, telegram, nickname)
+            uow.repository.audit("profile_updated", principal.user.id, user_id, self.clock(), {})
+            uow.commit()
+            return replace(target, name=name, phone=phone, telegram=telegram, nickname=nickname)
+
+    def _guard_admin_access(self, uow: IdentityUnitOfWork, actor: User, target: User) -> None:
+        if target.id == actor.id:
+            raise IdentityError("FORBIDDEN", "Свой доступ меняет другой администратор")
+        if Role.ADMIN in target.roles and target.is_active and uow.repository.admin_count() <= 1:
+            raise IdentityError("LAST_ADMIN", "Нельзя отключить последнего администратора")
+
+    def set_active(self, token: str, user_id: UUID, active: bool) -> User:
+        """Block or unblock an employee; a blocked one is signed out everywhere."""
+        with self.uow() as uow:
+            uow.repository.lock_role_changes()
+            principal = self._principal(uow, token)
+            principal.require("identity.manage")
+            target = uow.repository.user_by_id(user_id, lock=True)
+            if not target or target.deleted_at:
+                raise IdentityError("NOT_FOUND", "Сотрудник не найден")
+            if target.is_active == active:
+                return target
+            if not active:
+                self._guard_admin_access(uow, principal.user, target)
+            uow.repository.set_active(user_id, active)
+            if not active:
+                uow.repository.revoke_user_sessions(user_id, self.clock())
+            uow.repository.audit(
+                "staff_unblocked" if active else "staff_blocked",
+                principal.user.id,
+                user_id,
+                self.clock(),
+                {},
+            )
+            uow.commit()
+            return replace(target, is_active=active)
+
+    def delete_staff(self, token: str, user_id: UUID) -> None:
+        """Archive: history keeps the name, the account disappears and cannot log in."""
+        with self.uow() as uow:
+            uow.repository.lock_role_changes()
+            principal = self._principal(uow, token)
+            principal.require("identity.manage")
+            target = uow.repository.user_by_id(user_id, lock=True)
+            if not target or target.deleted_at:
+                return
+            self._guard_admin_access(uow, principal.user, target)
+            now = self.clock()
+            uow.repository.archive_user(user_id, now)
+            uow.repository.revoke_user_sessions(user_id, now)
+            uow.repository.audit("staff_deleted", principal.user.id, user_id, now, {})
+            uow.commit()
+
+    def reset_password(self, token: str, user_id: UUID, password: str) -> User:
+        """An administrator sets a new password for an employee who forgot theirs."""
+        # Authorize before expensive hashing, then recheck inside the transaction.
+        self.authenticate(token).require("identity.manage")
+        validate_password(password)
+        hashed = self.passwords.hash(password)
+        with self.uow() as uow:
+            principal = self._principal(uow, token)
+            principal.require("identity.manage")
+            target = uow.repository.user_by_id(user_id, lock=True)
+            if not target or target.deleted_at:
+                raise IdentityError("NOT_FOUND", "Сотрудник не найден")
+            if target.id == principal.user.id:
+                raise IdentityError(
+                    "FORBIDDEN",
+                    "Свой пароль меняет другой администратор или команда на сервере",
+                )
+            uow.repository.update_password_hash(user_id, hashed)
+            # Whoever knew the old password loses access everywhere at once.
+            uow.repository.revoke_user_sessions(user_id, self.clock())
+            uow.repository.audit("password_reset", principal.user.id, user_id, self.clock(), {})
+            uow.commit()
+            return target
+
+    def recover_admin(self, login: str, password: str) -> User:
+        """Local server command for an administrator who forgot their own password."""
+        if not self.allow_demo:
+            raise IdentityError("FORBIDDEN", "Восстановление доступно только в локальном режиме")
+        validate_password(password)
+        hashed = self.passwords.hash(password)
+        with self.uow() as uow:
+            user = uow.repository.find_user(normalize_login(login), lock=True)
+            if not user or Role.ADMIN not in user.roles:
+                raise IdentityError("NOT_FOUND", "Администратор с таким логином не найден")
+            uow.repository.update_password_hash(user.id, hashed)
+            uow.repository.revoke_user_sessions(user.id, self.clock())
+            uow.repository.audit("admin_password_recovered", None, user.id, self.clock(), {})
+            uow.commit()
+            return user
 
     def _validate_roles(self, repository: IdentityRepository, assigned: frozenset[str]) -> None:
         known = {role.code for role in repository.role_definitions()}

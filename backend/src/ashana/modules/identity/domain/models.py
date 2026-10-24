@@ -105,12 +105,33 @@ def normalize_nickname(value: str) -> str:
     return nickname
 
 
-def validate_password(password: str) -> None:
-    if not 12 <= len(password) <= 128:
+# Owner's decision 24.10.2026 for the local demo: at least 4 characters.
+PASSWORD_MIN = 4
+
+
+def normalize_telegram(value: str | None) -> str | None:
+    """Telegram username as @name; empty means no contact."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    if text.startswith("https://t.me/"):
+        text = text.removeprefix("https://t.me/")
+    text = "@" + text.lstrip("@")
+    if not re.fullmatch(r"@[A-Za-z0-9_]{5,32}", text):
         raise IdentityError(
             "VALIDATION_ERROR",
             "Проверьте введённые данные",
-            {"password": ["Пароль должен содержать от 12 до 128 символов"]},
+            {"telegram": ["Telegram: @ и 5–32 латинских буквы, цифры или подчёркивания"]},
+        )
+    return text
+
+
+def validate_password(password: str) -> None:
+    if not PASSWORD_MIN <= len(password) <= 128:
+        raise IdentityError(
+            "VALIDATION_ERROR",
+            "Проверьте введённые данные",
+            {"password": ["Пароль должен содержать от 4 до 128 символов"]},
         )
 
 
@@ -127,6 +148,9 @@ class User:
     is_demo: bool = True
     permissions: frozenset[str] | None = None
     nickname: str = ""
+    telegram: str | None = None
+    # Archived employees keep their id in history but no longer appear or log in.
+    deleted_at: datetime | None = None
 
     @property
     def effective_permissions(self) -> frozenset[str]:

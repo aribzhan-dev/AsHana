@@ -25,6 +25,7 @@ it("накладная отправляет строки и расходы це�
     {
       kind,
       commission_bp: 0,
+      system: false,
       id:
         kind === "supplier"
           ? "supplier"

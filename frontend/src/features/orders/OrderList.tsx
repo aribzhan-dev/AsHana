@@ -222,7 +222,13 @@ export function OrderCard({
           )}
         </>
       )}
-      {!staff && ["pending_payment", "confirmed"].includes(order.status) && (
+      {!staff && ["confirmed", "preparing", "ready"].includes(order.status) && (
+        <p className="field-hint">
+          Оплаченный заказ не отменяется, деньги не возвращаются. Если не
+          забрать вовремя, заказ закроется как «Не забрали».
+        </p>
+      )}
+      {!staff && order.status === "pending_payment" && (
         <Button
           variant="secondary"
           loading={op.busy}
@@ -234,9 +240,7 @@ export function OrderCard({
               })
           }
         >
-          {order.status === "pending_payment"
-            ? "Отменить оформление"
-            : "Отменить заказ"}
+          Отменить оформление
         </Button>
       )}
       {notice && <p role="status">{notice}</p>}

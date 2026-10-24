@@ -59,9 +59,9 @@ def test_argon_passwords_preserve_spaces_and_do_not_echo() -> None:
     assert not passwords.verify(hashed, password.strip())
     assert not passwords.verify(None, password)
     assert not passwords.needs_rehash(hashed)
-    validate_password(" " * 12)
+    validate_password(" " * 4)
     with pytest.raises(IdentityError):
-        validate_password("short")
+        validate_password("abc")
 
 
 def test_session_expiry_and_permissions() -> None:

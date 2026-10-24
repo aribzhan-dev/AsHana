@@ -454,23 +454,16 @@ class OrderService:
                 raise InventoryError("NOT_FOUND", "Заказ не найден")
             if order.status in ("cancelled", "expired"):
                 return order
-            if order.status not in ("pending_payment", "confirmed"):
+            # Owner's rule: site orders are paid online only and are never refunded.
+            if order.status != "pending_payment":
                 raise InventoryError(
-                    "ORDER_STATE", "Заказ уже передан в работу. Обратитесь к сотруднику"
+                    "ORDER_STATE",
+                    "Оплаченный заказ нельзя отменить: деньги за заказы с сайта не возвращаются",
                 )
             now = self.clock()
             updated = self._release(
-                uow,
-                order,
-                "expired"
-                if order.status == "pending_payment" and order.expires_at <= now
-                else "cancelled",
-                guest,
-                now,
+                uow, order, "expired" if order.expires_at <= now else "cancelled", guest, now
             )
-            if order.status == "confirmed":
-                uow.repository.payment(updated, "refunded", now)
-                uow.repository.event(updated, guest, "paid_cancelled", now)
             uow.commit()
             return updated
 
@@ -491,12 +484,26 @@ class OrderService:
         return updated
 
     def expire(self) -> None:
+        grace = timedelta(minutes=self.policy.pickup_grace_minutes)
         with self.uow() as uow:
             ids = uow.repository.due(self.clock(), 100)
+            missed = uow.repository.overdue(self.clock() - grace, 100)
         for id in ids:
             with self.uow() as uow:
                 order = uow.repository.order(id, lock=True)
                 now = self.clock()
                 if order and order.status == "pending_payment" and order.expires_at <= now:
                     self._release(uow, order, "expired", None, now)
+                    uow.commit()
+        for id in missed:
+            with self.uow() as uow:
+                order = uow.repository.order(id, lock=True)
+                now = self.clock()
+                if (
+                    order
+                    and order.status in ("confirmed", "preparing", "ready")
+                    and order.slot_ends_at + grace <= now
+                ):
+                    # The payment stays captured; the reserved portions go back on sale.
+                    self._release(uow, order, "no_show", None, now)
                     uow.commit()

@@ -23,10 +23,22 @@ export function nameError(value: string): string | undefined {
     return t.nameError;
 }
 export function passwordError(value: string): string | undefined {
-  if ([...value].length < 12 || [...value].length > 128) return t.passwordError;
+  if ([...value].length < 4 || [...value].length > 128) return t.passwordError;
 }
 
 export function loginError(value: string): string | undefined {
   if (!/^[A-Za-z][A-Za-z0-9._-]{2,39}$/.test(value.replace(/^ +| +$/g, "")))
     return t.loginError;
+}
+
+// Telegram username: optional, @ plus 5–32 latin letters, digits or underscores.
+export function telegramError(value: string): string | undefined {
+  const name = value
+    .trim()
+    .replace(/^https:\/\/t\.me\//, "")
+    .replace(/^@/, "");
+  if (!name) return undefined;
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(name))
+    return "Telegram: @ и 5–32 латинских буквы, цифры или подчёркивания";
+  return undefined;
 }

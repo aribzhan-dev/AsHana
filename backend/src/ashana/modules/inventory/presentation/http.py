@@ -265,6 +265,16 @@ class DirectoryInput(BaseModel):
 class DirectoryResponse(DirectoryInput):
     id: UUID
     commission_bp: int = 0
+    system: bool = False
+
+
+class DirectoryRenameInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=100, strict=True)
+
+
+class DirectoryDetailsResponse(DirectoryResponse):
+    usage: dict[str, int]
 
 
 class InvoiceLineInput(BaseModel):
@@ -334,8 +344,33 @@ class InvoicePaymentResponse(BaseModel):
 @router.get("/directories", operation_id="listStockDirectories")
 def directories(request: Request, service: Service, kind: DirectoryKind) -> list[DirectoryResponse]:
     return [
-        DirectoryResponse(**asdict(d)) for d in service.directories(session_token(request), kind)
+        DirectoryResponse(**asdict(d), system=d.system)
+        for d in service.directories(session_token(request), kind)
     ]
+
+
+@router.get("/directories/{id}", operation_id="getStockDirectory")
+def directory(id: UUID, request: Request, service: Service) -> DirectoryDetailsResponse:
+    entry, usage = service.directory(session_token(request), id)
+    return DirectoryDetailsResponse(**asdict(entry), system=entry.system, usage=usage)
+
+
+@router.put(
+    "/directories/{id}", operation_id="renameStockDirectory", dependencies=[Depends(enforce_csrf)]
+)
+def rename_directory(
+    id: UUID, request: Request, data: DirectoryRenameInput, service: Service, key: Key
+) -> OperationResponse:
+    return OperationResponse(
+        **asdict(service.rename_directory(session_token(request), key, id, data.name))
+    )
+
+
+@router.delete(
+    "/directories/{id}", operation_id="deleteStockDirectory", dependencies=[Depends(enforce_csrf)]
+)
+def delete_directory(id: UUID, request: Request, service: Service, key: Key) -> OperationResponse:
+    return OperationResponse(**asdict(service.delete_directory(session_token(request), key, id)))
 
 
 @router.post(

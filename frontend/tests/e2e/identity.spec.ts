@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { selectTheme, tabKey } from "./theme-helper";
+const ROLES_CONFIRM = "Изменить роли сотрудника?";
 
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
@@ -121,16 +122,28 @@ test("администратор создаёт сотрудника, меняе
       .filter({ has: page.getByRole("heading", { name: "Найти сотрудника" }) });
     await search.getByLabel("Логин").fill("worker90");
     await search.getByRole("button", { name: "Найти сотрудника" }).click();
-    await search.getByLabel("Кухня", { exact: true }).uncheck();
-    await search.getByLabel("Кассир", { exact: true }).check();
-    await search.getByRole("button", { name: "Сохранить роли" }).click();
+    // The search opens the employee card: view, then edit roles and status.
+    const card = page.getByRole("dialog", { name: /Нұрсұлтан/ });
+    await expect(card).toContainText("worker90");
+    await card.getByRole("button", { name: "Изменить" }).click();
+    await card.getByLabel("Telegram").fill("@nursultan_k");
+    await card.getByRole("button", { name: "Сохранить данные" }).click();
+    await expect(card.getByText("Данные сохранены")).toBeVisible();
+    await card.getByLabel("Кухня", { exact: true }).uncheck();
+    await card.getByLabel("Кассир", { exact: true }).check();
+    await card.getByRole("button", { name: "Сохранить роли" }).click();
     await page
-      .getByRole("dialog")
+      .getByRole("dialog", { name: ROLES_CONFIRM })
       .getByRole("button", { name: "Сохранить роли" })
       .click();
     await expect(
-      page.getByText("Роли сохранены.", { exact: false }),
+      card.getByText("Роли сохранены.", { exact: false }),
     ).toBeVisible();
+    await card.getByRole("button", { name: "Назад к карточке" }).click();
+    await expect(card).toContainText("@nursultan_k");
+    await card.getByRole("button", { name: "Заблокировать" }).click();
+    await expect(card).toContainText("Заблокирован");
+    await card.getByRole("button", { name: "Закрыть" }).click();
     await worker.reload();
     await expect(
       worker.getByRole("heading", { name: "Войти", exact: true }),
