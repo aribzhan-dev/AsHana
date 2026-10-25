@@ -61,5 +61,5 @@ Thumbs.db
 .agents/
 .claude/
 AGENTS.md
-task/
+tasks/
 CLAUDE.md
