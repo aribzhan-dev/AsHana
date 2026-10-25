@@ -164,3 +164,4 @@ Detailed documentation is in Russian:
 ## License
 
 All rights reserved. This repository does not grant rights to copy, redistribute or reuse the code, design or content.
+  
