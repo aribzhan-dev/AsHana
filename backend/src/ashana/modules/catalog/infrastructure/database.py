@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from ashana.modules.catalog.application.ports import CatalogRepository
 from ashana.modules.catalog.domain.models import ALMATY, Entry, MenuEntry, Period
 from ashana.modules.inventory.application.ports import InventoryRepository
-from ashana.modules.inventory.domain.models import InventoryError
+from ashana.shared.domain import BusinessError
 
 metadata = MetaData()
 Table("identity_users", metadata, Column("id", Uuid, primary_key=True))
@@ -189,7 +189,7 @@ class PostgresCatalogRepository:
         try:
             self.connection.execute(query.values(**values))
         except IntegrityError:
-            raise InventoryError(
+            raise BusinessError(
                 "MENU_ITEM_EXISTS", "Эта позиция уже добавлена в период. Откройте её для изменения"
             ) from None
 

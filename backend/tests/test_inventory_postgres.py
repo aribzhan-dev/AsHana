@@ -16,8 +16,8 @@ from ashana.bootstrap.inventory import inventory_service
 from ashana.bootstrap.settings import Settings
 from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError, Role
-from ashana.modules.inventory.domain.models import InventoryError, Result
 from ashana.modules.inventory.infrastructure.database import audit, batches, movements, requests
+from ashana.shared.domain import BusinessError, Result
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("ASHANA_RUN_INTEGRATION") != "1", reason="Нужен изолированный PostgreSQL"
@@ -56,7 +56,7 @@ def test_inventory_atomic_replay_races_and_history(
         assert results[0] == results[1]
         batch_id = results[0].subject_id
         assert service.movements(token, batch_id)[0].delta == Decimal("1.25")
-        with pytest.raises(InventoryError) as mismatch:
+        with pytest.raises(BusinessError) as mismatch:
             service.receive(
                 token,
                 key,
@@ -77,13 +77,13 @@ def test_inventory_atomic_replay_races_and_history(
                     token, uuid4(), batch_id, "write_off", "1", "kg", "Проверка гонки", 1
                 )
                 return "ok"
-            except InventoryError as error:
+            except BusinessError as error:
                 return error.code
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             outcomes = list(pool.map(lambda _: write_off(), range(2)))
         assert sorted(outcomes) == ["STALE_BATCH", "ok"]
-        with pytest.raises(InventoryError) as insufficient:
+        with pytest.raises(BusinessError) as insufficient:
             service.change(token, uuid4(), batch_id, "write_off", "1", "kg", "Нехватка", 2)
         assert insufficient.value.code == "INSUFFICIENT_STOCK"
         countkey = uuid4()
@@ -97,7 +97,7 @@ def test_inventory_atomic_replay_races_and_history(
             )
             == counted
         )
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             service.change(token, uuid4(), batch_id, "count", "0", "kg", "Старый пересчёт", 2)
         history = service.movements(token, batch_id)
         assert (
@@ -110,11 +110,11 @@ def test_inventory_atomic_replay_races_and_history(
             connection.execute(
                 batches.update().where(batches.c.id == batch_id).values(reserved=Decimal("0.4"))
             )
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             service.change(
                 token, uuid4(), batch_id, "count", "0.2", "kg", "Нельзя затронуть резерв", 3
             )
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             service.change(
                 token, uuid4(), batch_id, "write_off", "0.2", "kg", "Нельзя затронуть резерв", 3
             )
@@ -180,7 +180,7 @@ def test_inventory_permissions_validation_and_expired_batches(
         now = datetime.now(UTC)
         item = service.create_item(clerk_token, uuid4(), "Сок проверочный", "purchased", "pcs")
         for amount in ("1.5", "NaN", "1e2"):
-            with pytest.raises(InventoryError):
+            with pytest.raises(BusinessError):
                 service.receive(
                     clerk_token,
                     uuid4(),
@@ -205,19 +205,19 @@ def test_inventory_permissions_validation_and_expired_batches(
             now - timedelta(days=1),
             "Тест",
         )
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             service.change(
                 clerk_token, uuid4(), receipt.subject_id, "resume", None, None, "Попытка", 1
             )
         service.change(
             clerk_token, uuid4(), receipt.subject_id, "write_off", "2", "pcs", "Истёк срок", 1
         )
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             service.change(
                 clerk_token, uuid4(), receipt.subject_id, "count", "2", "pcs", "Попытка открыть", 2
             )
         own = service.create_item(clerk_token, uuid4(), "Каша проверочная", "prepared", "portion")
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             service.receive(
                 clerk_token,
                 uuid4(),
@@ -341,10 +341,10 @@ def test_inventory_idempotency_is_scoped_and_database_checks_units(
                 .where(movements.c.batch_id == first.subject_id)
                 .values(reason="Недопустимое исправление")
             )
-        with pytest.raises(InventoryError) as duplicate:
+        with pytest.raises(BusinessError) as duplicate:
             service.create_item(token, uuid4(), "СОК ДЛЯ ПРОВЕРКИ КЛЮЧЕЙ", "purchased", "pcs")
         assert duplicate.value.code == "ITEM_EXISTS"
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             service.receive(
                 token,
                 uuid4(),

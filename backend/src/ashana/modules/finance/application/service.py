@@ -4,10 +4,9 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from types import TracebackType
-from typing import Protocol
 from uuid import UUID, uuid4
 
+from ashana.modules.finance.application.ports import FinanceRepository, FinanceUnitOfWork
 from ashana.modules.finance.domain.models import (
     ALMATY,
     Accrual,
@@ -21,24 +20,7 @@ from ashana.modules.finance.domain.models import (
     month_bounds,
     share,
 )
-from ashana.modules.finance.infrastructure.database import PostgresFinanceRepository
-from ashana.modules.inventory.application.ports import InventoryRepository
-from ashana.modules.inventory.domain.models import InventoryError, Result, invalid, text_value
-
-
-class FinanceUnitOfWork(Protocol):
-    repository: PostgresFinanceRepository
-    stock: InventoryRepository
-
-    def __enter__(self) -> "FinanceUnitOfWork": ...
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None: ...
-    def authorize(self, token: str, permission: str | None = "finance.manage") -> UUID: ...
-    def commit(self) -> None: ...
+from ashana.shared.domain import BusinessError, Result, invalid, text_value
 
 
 def amount(value: int, field: str, *, allow_negative: bool = False) -> int:
@@ -90,9 +72,7 @@ class FinanceService:
         return at
 
     # --- reports -------------------------------------------------------------------------
-    def _accruals(
-        self, repo: PostgresFinanceRepository, month: date, pnl: ProfitAndLoss
-    ) -> list[Accrual]:
+    def _accruals(self, repo: FinanceRepository, month: date, pnl: ProfitAndLoss) -> list[Accrual]:
         """Fixed, daily, hourly and sales pay first; profit shares use the profit after them."""
         workers = repo.workers()
         shifts = repo.shifts(month)
@@ -172,7 +152,7 @@ class FinanceService:
 
         def action(uow: FinanceUnitOfWork, actor: UUID, now: datetime) -> Result:
             if not uow.repository.set_commission(method_id, basis_points):
-                raise InventoryError("NOT_FOUND", "Способ оплаты не найден")
+                raise BusinessError("NOT_FOUND", "Способ оплаты не найден")
             return Result(method_id, 1)
 
         return self._write(
@@ -226,7 +206,7 @@ class FinanceService:
             uow.repository.lock(f"plan:{month}:{category}")
             current = next((p for p in uow.repository.plans(month) if p.category == category), None)
             if (current.version if current else 0) != version:
-                raise InventoryError("STALE_PLAN", "План изменился. Обновите страницу")
+                raise BusinessError("STALE_PLAN", "План изменился. Обновите страницу")
             plan = Plan(month, category, target_minor, version + 1)
             uow.repository.save_plan(plan, actor, now)
             return Result(actor, plan.version)
@@ -257,9 +237,9 @@ class FinanceService:
             owners = uow.repository.owners()
             current = next((o for o in owners if o.id == owner_id), None) if owner_id else None
             if owner_id and not current:
-                raise InventoryError("NOT_FOUND", "Учредитель не найден")
+                raise BusinessError("NOT_FOUND", "Учредитель не найден")
             if (current.version if current else 0) != version:
-                raise InventoryError("STALE_OWNER", "Данные изменились. Обновите страницу")
+                raise BusinessError("STALE_OWNER", "Данные изменились. Обновите страницу")
             others = sum(o.share_bp for o in owners if o.active and o.id != owner_id)
             if active and others + share_bp > 10000:
                 raise invalid("share_bp", "Сумма долей учредителей больше 100%")
@@ -297,7 +277,7 @@ class FinanceService:
 
         def action(uow: FinanceUnitOfWork, actor: UUID, now: datetime) -> Result:
             if not any(o.id == owner_id for o in uow.repository.owners()):
-                raise InventoryError("NOT_FOUND", "Учредитель не найден")
+                raise BusinessError("NOT_FOUND", "Учредитель не найден")
             self._method(uow, method_id)
             payment = Money(
                 uuid4(),
@@ -343,9 +323,9 @@ class FinanceService:
         def action(uow: FinanceUnitOfWork, actor: UUID, now: datetime) -> Result:
             current = uow.repository.worker(worker_id, lock=True) if worker_id else None
             if worker_id and not current:
-                raise InventoryError("NOT_FOUND", "Сотрудник не найден")
+                raise BusinessError("NOT_FOUND", "Сотрудник не найден")
             if (current.version if current else 0) != version:
-                raise InventoryError("STALE_WORKER", "Данные изменились. Обновите страницу")
+                raise BusinessError("STALE_WORKER", "Данные изменились. Обновите страницу")
             if user_id and not any(s["id"] == str(user_id) for s in uow.repository.staff()):
                 raise invalid("user_id", "Аккаунт не найден")
             worker = Worker(
@@ -399,16 +379,16 @@ class FinanceService:
         def action(uow: FinanceUnitOfWork, actor: UUID, now: datetime) -> Result:
             worker = uow.repository.worker_for_user(actor)
             if not worker:
-                raise InventoryError("NO_WORKER", "Аккаунт не привязан к сотруднику в зарплате")
+                raise BusinessError("NO_WORKER", "Аккаунт не привязан к сотруднику в зарплате")
             current = uow.repository.open_shift(worker.id)
             if start:
                 if current:
-                    raise InventoryError("SHIFT_OPEN", "Смена уже начата")
+                    raise BusinessError("SHIFT_OPEN", "Смена уже начата")
                 shift = Shift(uuid4(), worker.id, now, None, "self", "", False, actor, now, now)
                 uow.repository.add_shift(shift)
                 return Result(shift.id, 1)
             if not current:
-                raise InventoryError("NO_SHIFT", "Смена не начата")
+                raise BusinessError("NO_SHIFT", "Смена не начата")
             # Forgotten check-outs are capped at 16 hours; a manager can correct them.
             end = min(now, current.starts_at + timedelta(hours=16))
             closed = replace(current, ends_at=end, updated_at=now)
@@ -428,7 +408,7 @@ class FinanceService:
     ) -> Result:
         def action(uow: FinanceUnitOfWork, actor: UUID, now: datetime) -> Result:
             if not uow.repository.worker(worker_id):
-                raise InventoryError("NOT_FOUND", "Сотрудник не найден")
+                raise BusinessError("NOT_FOUND", "Сотрудник не найден")
             if not starts_at.tzinfo or not ends_at.tzinfo or ends_at <= starts_at:
                 raise invalid("ends_at", "Окончание должно быть позже начала")
             if ends_at - starts_at > timedelta(hours=24) or ends_at > now + timedelta(minutes=5):
@@ -460,7 +440,7 @@ class FinanceService:
         def action(uow: FinanceUnitOfWork, actor: UUID, now: datetime) -> Result:
             shift = uow.repository.shift(shift_id)
             if not shift:
-                raise InventoryError("NOT_FOUND", "Смена не найдена")
+                raise BusinessError("NOT_FOUND", "Смена не найдена")
             if shift.voided:
                 return Result(shift.id, 2)
             uow.repository.update_shift(
@@ -489,7 +469,7 @@ class FinanceService:
         def action(uow: FinanceUnitOfWork, actor: UUID, now: datetime) -> Result:
             uow.repository.lock(f"payroll:{worker_id}:{month}")
             if not uow.repository.worker(worker_id):
-                raise InventoryError("NOT_FOUND", "Сотрудник не найден")
+                raise BusinessError("NOT_FOUND", "Сотрудник не найден")
             self._method(uow, method_id)
             payment = Money(
                 uuid4(),

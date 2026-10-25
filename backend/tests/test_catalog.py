@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from ashana.modules.catalog.domain.models import Period, meal_date, price_minor, validate_period
-from ashana.modules.inventory.domain.models import InventoryError
+from ashana.shared.domain import BusinessError
 
 
 def test_period_boundaries_and_almaty_date() -> None:
@@ -20,15 +20,15 @@ def test_period_boundaries_and_almaty_date() -> None:
     maximum = datetime.max.replace(tzinfo=UTC)
     validate_period(maximum - timedelta(hours=1), maximum)
     for end in (start, start - timedelta(seconds=1), start + timedelta(days=1, seconds=1)):
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             validate_period(start, end)
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         validate_period(start.replace(tzinfo=None), period.ends_at)
 
 
 @pytest.mark.parametrize("value", [-1, True, 1.5, 1000000000000])
 def test_price_is_bounded_integer_tiyn(value: int) -> None:
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         price_minor(value)
 
 

@@ -3,7 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from ashana.modules.inventory.domain.models import invalid, quantity
+from ashana.modules.inventory.domain.models import quantity
+from ashana.shared.domain import invalid
 
 
 def whole_yield(value: int) -> int:

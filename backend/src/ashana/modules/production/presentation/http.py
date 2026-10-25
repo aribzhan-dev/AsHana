@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ashana.bootstrap.errors import ErrorResponse
-from ashana.modules.identity.presentation.http import enforce_csrf, session_token
+from ashana.bootstrap.http import OperationResponse, enforce_csrf, session_token
 from ashana.modules.inventory.domain.models import batch_state
-from ashana.modules.inventory.presentation.http import ItemResponse, OperationResponse
+from ashana.modules.inventory.presentation.http import ItemResponse
 from ashana.modules.production.application.service import ProductionService
 from ashana.modules.production.domain.models import ConsumptionInput, IngredientInput, Recipe
 

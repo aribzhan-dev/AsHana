@@ -11,10 +11,10 @@ from test_orders_postgres import order_system as _order_system
 from ashana.bootstrap.pos import pos_service
 from ashana.bootstrap.settings import Settings
 from ashana.modules.identity.application.service import IdentityService
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.inventory.infrastructure.database import batches
 from ashana.modules.orders.domain.models import Choice, Order
 from ashana.modules.pos.domain.models import Sale
+from ashana.shared.domain import BusinessError
 
 load_system = _order_system
 pytestmark = pytest.mark.skipif(
@@ -39,7 +39,7 @@ def test_lunch_rush_never_oversells_last_portions(load_system: System) -> None:
     def order(guest: str) -> object:
         try:
             return s.buy(guest, entry, slot)
-        except InventoryError as e:
+        except BusinessError as e:
             return e.code
 
     started = time.monotonic()
@@ -69,7 +69,7 @@ def test_counter_and_site_share_stock_under_load(
             if n % 2:
                 return pos.sell(s.token, uuid4(), [Choice(entry, 1, 12345)], "success")
             return s.buy(guests[n // 2], entry, slot)
-        except InventoryError as e:
+        except BusinessError as e:
             return e.code
 
     with ThreadPoolExecutor(16) as pool:

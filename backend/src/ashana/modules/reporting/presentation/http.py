@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from ashana.bootstrap.errors import ErrorResponse
-from ashana.modules.identity.presentation.http import session_token
+from ashana.bootstrap.http import session_token
 from ashana.modules.reporting.application.service import ReportingService
 from ashana.modules.reporting.domain.models import ReportFilter, ReportKind
 

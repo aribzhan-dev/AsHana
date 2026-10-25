@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException
 
 from ashana.modules.identity.domain.models import IdentityError
-from ashana.modules.inventory.domain.models import InventoryError
+from ashana.shared.domain import BusinessError
 
 
 class ErrorResponse(BaseModel):
@@ -63,8 +63,8 @@ def register_error_handlers(app: FastAPI) -> None:
             {"Retry-After": "900"} if exc.code == "RATE_LIMITED" else None,
         )
 
-    @app.exception_handler(InventoryError)
-    async def inventory_error(request: Request, exc: InventoryError) -> JSONResponse:
+    @app.exception_handler(BusinessError)
+    async def business_error(request: Request, exc: BusinessError) -> JSONResponse:
         status = {"VALIDATION_ERROR": 422, "NOT_FOUND": 404, "FORBIDDEN": 403}.get(exc.code, 409)
         return error_response(request, status, exc.code, exc.message, exc.field_errors)
 

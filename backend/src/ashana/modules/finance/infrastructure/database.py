@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import IntegrityError
 
+from ashana.modules.finance.application.ports import FinanceRepository
 from ashana.modules.finance.domain.models import (
     Money,
     Owner,
@@ -20,7 +21,7 @@ from ashana.modules.finance.domain.models import (
     month_bounds,
 )
 from ashana.modules.inventory.application.ports import InventoryRepository
-from ashana.modules.inventory.domain.models import InventoryError
+from ashana.shared.domain import BusinessError
 
 # Unit cost of every batch: purchase cost / received quantity; cooked batches take the
 # cost of the raw batches they consumed divided by the actual yield.
@@ -381,7 +382,7 @@ class PostgresFinanceRepository:
                     values,
                 )
         except IntegrityError:
-            raise InventoryError(
+            raise BusinessError(
                 "WORKER_LINKED",
                 "Этот аккаунт уже привязан к другому сотруднику",
                 {"user_id": ["Этот аккаунт уже привязан к другому сотруднику"]},
@@ -430,7 +431,7 @@ class PostgresFinanceRepository:
                 asdict(shift),
             )
         except IntegrityError:
-            raise InventoryError("SHIFT_OPEN", "Смена уже начата") from None
+            raise BusinessError("SHIFT_OPEN", "Смена уже начата") from None
 
     def update_shift(self, shift: Shift) -> None:
         self.connection.execute(
@@ -464,7 +465,7 @@ class PostgresFinanceUnitOfWork:
     def __enter__(self) -> "PostgresFinanceUnitOfWork":
         self.connection = self.engine.connect()
         self.transaction = self.connection.begin()
-        self.repository = PostgresFinanceRepository(self.connection)
+        self.repository: FinanceRepository = PostgresFinanceRepository(self.connection)
         self.stock = self.stock_factory(self.connection)
         return self
 

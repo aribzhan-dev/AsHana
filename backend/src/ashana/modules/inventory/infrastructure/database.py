@@ -37,13 +37,12 @@ from ashana.modules.inventory.application.ports import InventoryRepository
 from ashana.modules.inventory.domain.models import (
     Batch,
     DirectoryEntry,
-    InventoryError,
     Invoice,
     InvoicePayment,
     Item,
     Movement,
-    Result,
 )
+from ashana.shared.domain import BusinessError, Result
 
 metadata = MetaData()
 # Reference-only table: the identity migration owns its definition.
@@ -256,7 +255,7 @@ class PostgresInventoryRepository:
                 directories.insert().values(**asdict(entry), name_key=entry.name.casefold())
             )
         except IntegrityError:
-            raise InventoryError("DIRECTORY_EXISTS", "Такое название уже существует") from None
+            raise BusinessError("DIRECTORY_EXISTS", "Такое название уже существует") from None
 
     def directory(self, id: UUID, *, lock: bool = False) -> DirectoryEntry | None:
         query = select(directories).where(directories.c.id == id)
@@ -286,7 +285,7 @@ class PostgresInventoryRepository:
                 .values(name=name, name_key=name.casefold())
             )
         except IntegrityError:
-            raise InventoryError("DIRECTORY_EXISTS", "Такое название уже существует") from None
+            raise BusinessError("DIRECTORY_EXISTS", "Такое название уже существует") from None
         if entry.kind == "category":
             # Goods, menu entries and plans keep the category as text: rename it everywhere.
             for table in ("inventory_items", "catalog_entries", "finance_sales_plans"):
@@ -303,7 +302,7 @@ class PostgresInventoryRepository:
             self.connection.execute(directories.delete().where(directories.c.id == entry.id))
         except IntegrityError:
             # A concurrent invoice or sale referenced the entry after the usage check.
-            raise InventoryError(
+            raise BusinessError(
                 "DIRECTORY_IN_USE", "Запись уже используется — её можно только переименовать"
             ) from None
 
@@ -359,7 +358,7 @@ class PostgresInventoryRepository:
         try:
             self.connection.execute(invoices.insert().values(**values))
         except IntegrityError:
-            raise InventoryError(
+            raise BusinessError(
                 "INVOICE_EXISTS", "Накладная этого поставщика с таким номером уже проведена"
             ) from None
 
@@ -421,9 +420,7 @@ class PostgresInventoryRepository:
                 .values(barcode=barcode, version=items.c.version + 1)
             )
         except IntegrityError:
-            raise InventoryError(
-                "ITEM_EXISTS", "Штрихкод уже используется другим товаром"
-            ) from None
+            raise BusinessError("ITEM_EXISTS", "Штрихкод уже используется другим товаром") from None
 
     def update_item(self, item: Item) -> None:
         values = asdict(item)
@@ -436,7 +433,7 @@ class PostgresInventoryRepository:
                 .values(**values, name_key=item.name.casefold())
             )
         except IntegrityError:
-            raise InventoryError("ITEM_EXISTS", "Название или штрихкод уже используются") from None
+            raise BusinessError("ITEM_EXISTS", "Название или штрихкод уже используются") from None
 
     def add_item(self, item: Item) -> None:
         try:
@@ -447,7 +444,7 @@ class PostgresInventoryRepository:
                 )
             )
         except IntegrityError:
-            raise InventoryError(
+            raise BusinessError(
                 "ITEM_EXISTS",
                 "Название или штрихкод уже используются",
                 {"name": ["Название уже используется"]},
@@ -547,7 +544,7 @@ class PostgresInventoryRepository:
         if not row:
             return None
         if row["fingerprint"] != fingerprint:
-            raise InventoryError(
+            raise BusinessError(
                 "IDEMPOTENCY_CONFLICT", "Этот ключ уже использован с другими данными"
             )
         return Result(row["subject_id"], row["version"])

@@ -8,10 +8,11 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from ashana.bootstrap.errors import ErrorResponse
-from ashana.modules.identity.presentation.http import enforce_csrf, session_token
+from ashana.bootstrap.http import OperationResponse, enforce_csrf, session_token
 from ashana.modules.inventory.application.service import InventoryService
-from ashana.modules.inventory.domain.models import Batch, InventoryError, batch_state
+from ashana.modules.inventory.domain.models import Batch, batch_state
 from ashana.modules.inventory.infrastructure.images import MAX_UPLOAD
+from ashana.shared.domain import BusinessError
 
 router = APIRouter(
     prefix="/api/v1/inventory",
@@ -86,11 +87,6 @@ class ItemUpdateInput(BaseModel):
     sale_price_minor: int = Field(ge=0, le=999999999999)
     expected_version: int = Field(ge=1)
     always_on_menu: bool = False
-
-
-class OperationResponse(BaseModel):
-    subject_id: UUID
-    version: int
 
 
 class BatchResponse(BaseModel):
@@ -510,7 +506,7 @@ class ImageResponse(BaseModel):
 )
 async def set_image(item_id: UUID, request: Request, service: Service) -> ImageResponse:
     if request.headers.get("content-type", "").split(";")[0] not in PHOTO_TYPES:
-        raise InventoryError(
+        raise BusinessError(
             "VALIDATION_ERROR",
             "Поддерживаются JPEG, PNG и WebP",
             {"image": ["Поддерживаются JPEG, PNG и WebP"]},
@@ -519,7 +515,7 @@ async def set_image(item_id: UUID, request: Request, service: Service) -> ImageR
     async for chunk in request.stream():
         data += chunk
         if len(data) > MAX_UPLOAD:
-            raise InventoryError("VALIDATION_ERROR", "Фото до 8 МБ", {"image": ["Фото до 8 МБ"]})
+            raise BusinessError("VALIDATION_ERROR", "Фото до 8 МБ", {"image": ["Фото до 8 МБ"]})
     digest = await run_in_threadpool(
         service.set_image, session_token(request), item_id, bytes(data)
     )
@@ -545,5 +541,5 @@ def remove_image(item_id: UUID, request: Request, service: Service) -> None:
 def get_image(item_id: UUID, request: Request, service: Service) -> Response:
     data = service.image(session_token(request), item_id)
     if data is None:
-        raise InventoryError("NOT_FOUND", "Фото не найдено")
+        raise BusinessError("NOT_FOUND", "Фото не найдено")
     return Response(content=data, media_type="image/webp")

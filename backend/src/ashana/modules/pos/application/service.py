@@ -8,18 +8,11 @@ from uuid import UUID, uuid4
 
 from ashana.modules.catalog.domain.models import MenuEntry
 from ashana.modules.identity.domain.models import IdentityError
-from ashana.modules.inventory.domain.models import (
-    DirectoryEntry,
-    InventoryError,
-    Movement,
-    Result,
-    change_quantity,
-    invalid,
-    text_value,
-)
+from ashana.modules.inventory.domain.models import DirectoryEntry, Movement, change_quantity
 from ashana.modules.orders.domain.models import Choice, validate_choices
 from ashana.modules.pos.application.ports import PosUnitOfWork
 from ashana.modules.pos.domain.models import Sale, SaleLine, SaleReturn
+from ashana.shared.domain import BusinessError, Result, invalid, text_value
 
 
 class PosService:
@@ -92,7 +85,7 @@ class PosService:
                     raise invalid("payment_method_id", "Выберите способ оплаты из настроек")
             cards = [uow.catalog.entry(c.entry_id) for c in choices]
             if any(c is None for c in cards):
-                raise InventoryError("MENU_UNAVAILABLE", "Позиция больше недоступна")
+                raise BusinessError("MENU_UNAVAILABLE", "Позиция больше недоступна")
             # Match checkout's period -> entry -> sorted batch lock order.
             periods = {
                 id: uow.catalog.period(id, lock=True)
@@ -102,14 +95,12 @@ class PosService:
             for choice in sorted(choices, key=lambda c: c.entry_id):
                 entry = uow.catalog.entry(choice.entry_id, lock=True)
                 if not entry or not entry.published or entry.period_id not in periods:
-                    raise InventoryError("MENU_UNAVAILABLE", "Позиция больше недоступна")
+                    raise BusinessError("MENU_UNAVAILABLE", "Позиция больше недоступна")
                 if entry.price_minor != choice.expected_price_minor:
-                    raise InventoryError(
-                        "PRICE_CHANGED", "Цена изменилась. Обновите меню и корзину"
-                    )
+                    raise BusinessError("PRICE_CHANGED", "Цена изменилась. Обновите меню и корзину")
                 item = uow.stock.item(entry.item_id)
                 if not item or item.kind not in ("prepared", "purchased"):
-                    raise InventoryError("MENU_UNAVAILABLE", "Выберите готовую продукцию")
+                    raise BusinessError("MENU_UNAVAILABLE", "Выберите готовую продукцию")
                 lines.append(
                     SaleLine(
                         entry.id,
@@ -125,7 +116,7 @@ class PosService:
             batches = {id: uow.stock.batch(id, lock=True) for id in sorted(ids)}
             now = self.clock()
             if any(not p or not p.active_at(now) for p in periods.values()):
-                raise InventoryError("MENU_UNAVAILABLE", "Период продажи закрыт или ещё не начался")
+                raise BusinessError("MENU_UNAVAILABLE", "Период продажи закрыт или ещё не начался")
             sale = Sale(
                 uuid4(),
                 actor,
@@ -178,7 +169,7 @@ class PosService:
                         if remaining == 0:
                             break
                     if remaining:
-                        raise InventoryError(
+                        raise BusinessError(
                             "INSUFFICIENT_STOCK", f"Недостаточно свободного остатка: {line.name}"
                         )
             uow.repository.add(sale)
@@ -191,7 +182,7 @@ class PosService:
         with self.uow() as uow:
             uow.authorize(token)
             if not uow.repository.get(sale_id):
-                raise InventoryError("NOT_FOUND", "Продажа не найдена")
+                raise BusinessError("NOT_FOUND", "Продажа не найдена")
             return uow.repository.returns(sale_id)
 
     def return_sale(
@@ -231,7 +222,7 @@ class PosService:
                 return saved
             sale = uow.repository.get(sale_id, lock=True)
             if not sale or sale.outcome != "success":
-                raise InventoryError("NOT_FOUND", "Оплаченная продажа не найдена")
+                raise BusinessError("NOT_FOUND", "Оплаченная продажа не найдена")
             returned: dict[UUID, int] = {}
             for previous in uow.repository.returns(sale_id):
                 for line in previous.lines:
@@ -243,7 +234,7 @@ class PosService:
                 if not sold_line:
                     raise invalid("lines", "Позиции нет в этой продаже")
                 if quantity > sold_line.quantity - returned.get(entry_id, 0):
-                    raise InventoryError(
+                    raise BusinessError(
                         "RETURN_LIMIT", f"Нельзя вернуть больше проданного: {sold_line.name}"
                     )
                 lines.append(replace(sold_line, quantity=quantity))
@@ -284,7 +275,7 @@ class PosService:
                         remaining = 0
                         break
                     if remaining:
-                        raise InventoryError(
+                        raise BusinessError(
                             "RETURN_BATCH_CLOSED",
                             f"Партия «{line.name}» закрыта или истекла. "
                             "Оформите возврат со списанием",

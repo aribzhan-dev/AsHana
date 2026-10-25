@@ -13,7 +13,8 @@ from ashana.modules.catalog.domain.models import (
     price_minor,
     validate_period,
 )
-from ashana.modules.inventory.domain.models import InventoryError, Item, Result, invalid, text_value
+from ashana.modules.inventory.domain.models import Item
+from ashana.shared.domain import BusinessError, Result, invalid, text_value
 
 
 class CatalogService:
@@ -33,7 +34,7 @@ class CatalogService:
         with self.uow() as uow:
             uow.authorize(token)
             if not uow.repository.period(period_id):
-                raise InventoryError("NOT_FOUND", "Период питания не найден")
+                raise BusinessError("NOT_FOUND", "Период питания не найден")
             return uow.repository.entries(period_id, offset, limit)
 
     def items(self, token: str, kind: str, offset: int = 0, limit: int = 100) -> list[Item]:
@@ -94,9 +95,9 @@ class CatalogService:
         def action(uow: CatalogUnitOfWork, actor: UUID, now: datetime) -> Result:
             current = uow.repository.period(period_id, lock=True) if period_id else None
             if period_id and not current:
-                raise InventoryError("NOT_FOUND", "Период питания не найден")
+                raise BusinessError("NOT_FOUND", "Период питания не найден")
             if expected_version != (current.version if current else 0):
-                raise InventoryError(
+                raise BusinessError(
                     "STALE_CATALOG", "Меню изменилось. Обновите данные и откройте форму заново"
                 )
             validate_period(starts_at, ends_at)
@@ -203,12 +204,12 @@ class CatalogService:
     ) -> Result:
         def action(uow: CatalogUnitOfWork, actor: UUID, now: datetime) -> Result:
             if not uow.repository.period(period_id, lock=True):
-                raise InventoryError("NOT_FOUND", "Период питания не найден")
+                raise BusinessError("NOT_FOUND", "Период питания не найден")
             current = uow.repository.entry(entry_id, lock=True) if entry_id else None
             if entry_id and (not current or current.period_id != period_id):
-                raise InventoryError("NOT_FOUND", "Позиция меню не найдена")
+                raise BusinessError("NOT_FOUND", "Позиция меню не найдена")
             if expected_version != (current.version if current else 0):
-                raise InventoryError(
+                raise BusinessError(
                     "STALE_CATALOG", "Меню изменилось. Обновите данные и откройте форму заново"
                 )
             if current and item_id != current.item_id:

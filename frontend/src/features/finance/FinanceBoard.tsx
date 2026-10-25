@@ -11,7 +11,8 @@ import { errorMessage } from "../../shared/lib/forms";
 import { Input } from "../../shared/ui/Input";
 import { ErrorState, LoadingState } from "../../shared/ui/Feedback";
 import { CommissionView, PlanView, PnlView } from "./PnlView";
-import { PayrollView, TimesheetView } from "./PayrollView";
+import { PayrollView } from "./PayrollView";
+import { TimesheetView } from "./TimesheetView";
 import {
   CommissionEditor,
   ExpensesView,

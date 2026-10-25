@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from ashana.modules.inventory.domain.models import invalid
+from ashana.shared.domain import invalid
 
 
 @dataclass(frozen=True)

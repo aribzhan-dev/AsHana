@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -20,7 +21,6 @@ from ashana.bootstrap.settings import Settings
 from ashana.modules.catalog.application.service import CatalogService
 from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.inventory.application.service import InventoryService
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.inventory.infrastructure.database import batches
 from ashana.modules.inventory.infrastructure.reservations import reservations
 from ashana.modules.notifications.infrastructure.delivery import DeliveryFailed, deliver_one, outbox
@@ -33,6 +33,7 @@ from ashana.modules.orders.infrastructure.database import (
     payment_attempts,
     slots,
 )
+from ashana.shared.domain import BusinessError
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("ASHANA_RUN_INTEGRATION") != "1", reason="Нужен изолированный PostgreSQL"
@@ -132,7 +133,7 @@ def test_order_last_portion_and_last_slot_races(order_system: System) -> None:
         def attempt(token: str, entry_id: UUID = entry, slot_id: UUID = slot) -> Order | str:
             try:
                 return s.buy(token, entry_id, slot_id)
-            except InventoryError as exc:
+            except BusinessError as exc:
                 return exc.code
 
         with ThreadPoolExecutor(2) as pool:
@@ -159,9 +160,9 @@ def test_order_atomic_all_lines_replay_snapshot_and_guest_ownership(order_system
         results = list(pool.map(lambda _: s.buy(guest, entry, slot, 2, key), range(2)))
     assert results[0].id == results[1].id
     order = results[0]
-    with pytest.raises(InventoryError, match="ключ"):
+    with pytest.raises(BusinessError, match="ключ"):
         s.buy(guest, entry, slot, 3, key)
-    with pytest.raises(InventoryError, match="не найден"):
+    with pytest.raises(BusinessError, match="не найден"):
         s.service.cancel(s.guest(), order.id)
     with s.service.uow() as uow:
         card = uow.catalog.entry(entry)
@@ -180,7 +181,7 @@ def test_order_atomic_all_lines_replay_snapshot_and_guest_ownership(order_system
     )
     own = s.service.checkouts(guest)
     assert own[0].total_minor == 24690 and own[0].lines[0].portion_label == "1 шт"
-    with pytest.raises(InventoryError, match="Цена"):
+    with pytest.raises(BusinessError, match="Цена"):
         s.buy(guest, entry, slot)
     assert s.service.cancel(guest, order.id).status == "cancelled"
     assert s.service.cancel(guest, order.id).version == 2
@@ -203,7 +204,7 @@ def test_order_atomic_all_lines_replay_snapshot_and_guest_ownership(order_system
     unavailable = s.catalog.save_entry(
         s.token, uuid4(), card.period_id, None, 0, item, "", "1 шт", 12345, True
     ).subject_id
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         s.service.checkout(
             guest, uuid4(), slot, [Choice(entry, 1, 12345), Choice(unavailable, 1, 12345)]
         )
@@ -226,7 +227,7 @@ def test_order_audit_failure_rolls_back_reservations_slot_outbox_and_key(
     key = uuid4()
     original = PostgresOrderRepository.event
 
-    def fail(*args: object) -> None:
+    def fail(*args: Any) -> None:
         raise RuntimeError("Сбой журнала")
 
     with monkeypatch.context() as patch:
@@ -261,13 +262,13 @@ def test_expiry_cancel_race_stock_writeoff_and_reserved_spoilage(order_system: S
             return s.stock.change(
                 s.token, uuid4(), batch, "write_off", "1", "pcs", "Проверка гонки", 1
             )
-        except InventoryError as exc:
+        except BusinessError as exc:
             return exc.code
 
     def buy() -> object:
         try:
             return s.buy(guest, entry, slot)
-        except InventoryError as exc:
+        except BusinessError as exc:
             return exc.code
 
     with ThreadPoolExecutor(2) as pool:
@@ -281,7 +282,7 @@ def test_expiry_cancel_race_stock_writeoff_and_reserved_spoilage(order_system: S
     order = s.buy(guest, entry, slot)
     s.stock.change(s.token, uuid4(), batch, "suspend", None, None, "Порча", 2)
     assert next(o for o in s.service.checkouts(guest) if o.id == order.id).stock_issue
-    with pytest.raises(InventoryError, match="Пригодность"):
+    with pytest.raises(BusinessError, match="Пригодность"):
         s.service.mock_payment(guest, order.id, uuid4(), "success")
     original = s.service.clock
     s.service.clock = lambda: order.expires_at
@@ -327,7 +328,7 @@ def test_cutoff_expiry_stock_at_pickup_limits_and_http_privacy(order_system: Sys
             .where(batches.c.id == batch)
             .values(expires_at=s.now + timedelta(hours=1))
         )
-    with pytest.raises(InventoryError, match="остатка"):
+    with pytest.raises(BusinessError, match="остатка"):
         s.buy(guest, entry, slot)
     entry, slot, _ = s.setup()
     order = s.buy(guest, entry, slot)
@@ -349,7 +350,7 @@ def test_cutoff_expiry_stock_at_pickup_limits_and_http_privacy(order_system: Sys
     original = s.service.clock
     s.service.clock = lambda: s.now + timedelta(hours=1, minutes=45)
     try:
-        with pytest.raises(InventoryError, match="слот"):
+        with pytest.raises(BusinessError, match="слот"):
             s.buy(s.guest(), entry, slot)
     finally:
         s.service.clock = original
@@ -357,7 +358,7 @@ def test_cutoff_expiry_stock_at_pickup_limits_and_http_privacy(order_system: Sys
     guest = s.guest()
     s.buy(guest, entry, slot)
     s.buy(guest, entry, slot)
-    with pytest.raises(InventoryError, match="лимит"):
+    with pytest.raises(BusinessError, match="лимит"):
         s.buy(guest, entry, slot)
 
 
@@ -458,7 +459,7 @@ def test_payment_creates_order_only_after_success_and_once(order_system: System)
             == 1
         )
     # Site orders are never refunded once paid.
-    with pytest.raises(InventoryError, match="нельзя отменить"):
+    with pytest.raises(BusinessError, match="нельзя отменить"):
         s.service.cancel(guest, checkout.id)
 
 
@@ -470,7 +471,7 @@ def test_payment_races_expiry_without_creating_late_order(order_system: System) 
     original = s.service.clock
     s.service.clock = lambda: checkout.expires_at
     try:
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             s.service.mock_payment(guest, checkout.id, uuid4(), "success")
         assert s.service.own_orders(guest) == []
         assert s.service.checkouts(guest)[0].status == "expired"
@@ -488,7 +489,7 @@ def test_payment_rollback_and_cancel_race(
     key = uuid4()
     original = PostgresOrderRepository.event
 
-    def fail_after_outbox(self: PostgresOrderRepository, *args: object) -> None:
+    def fail_after_outbox(self: PostgresOrderRepository, *args: Any) -> None:
         original(self, *args)
         raise RuntimeError("Сбой после записи уведомления")
 
@@ -505,13 +506,13 @@ def test_payment_rollback_and_cancel_race(
             ).first()
             is None
         )
-    with pytest.raises(InventoryError, match="не найден"):
+    with pytest.raises(BusinessError, match="не найден"):
         s.service.mock_payment(s.guest(), checkout.id, key, "success")
 
     def pay() -> object:
         try:
             return s.service.mock_payment(guest, checkout.id, key, "success")
-        except InventoryError as exc:
+        except BusinessError as exc:
             return exc.code
 
     with ThreadPoolExecutor(2) as pool:
@@ -541,14 +542,14 @@ def test_full_five_minute_hold_and_fifteen_minute_payment_cutoff(order_system: S
         checkout = s.buy(guest, entry, slot)
         assert checkout.expires_at == cutoff
         s.service.clock = lambda: cutoff - timedelta(minutes=4)
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             s.buy(s.guest(), entry, slot)
         with s.service.uow() as uow:
             card = uow.catalog.entry(entry)
             assert card
         assert s.service.slots(card.period_id) == []
         s.service.clock = lambda: cutoff
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             s.service.mock_payment(guest, checkout.id, uuid4(), "success")
         assert s.service.own_orders(guest) == []
     finally:
@@ -638,7 +639,7 @@ def test_serving_two_staff_only_one_consumption_and_replay(
                 order.version,
                 order.pickup_code or "",
             )
-        except InventoryError as exc:
+        except BusinessError as exc:
             return exc.code
 
     with ThreadPoolExecutor(2) as pool:
@@ -676,7 +677,7 @@ def test_serving_two_staff_only_one_consumption_and_replay(
             == 1
         )
     assert s.service.own_orders(guest)[0].status == "completed"
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         s.service.cancel(guest, order.id)
 
 
@@ -689,7 +690,7 @@ def test_serving_rollback_after_event_keeps_ready_stock_and_retry(
     original = PostgresOrderRepository.event
     key = uuid4()
 
-    def broken(self: PostgresOrderRepository, *args: object) -> None:
+    def broken(self: PostgresOrderRepository, *args: Any) -> None:
         original(self, *args)
         raise RuntimeError("Сбой после уведомления")
 
@@ -715,7 +716,7 @@ def test_paid_order_is_never_refunded_and_becomes_no_show(order_system: System) 
     """Owner's rule: no refunds for site orders; unclaimed food goes back on sale."""
     s = order_system
     guest, order, batch = paid_for_serving(s)
-    with pytest.raises(InventoryError, match="нельзя отменить"):
+    with pytest.raises(BusinessError, match="нельзя отменить"):
         s.service.cancel(guest, order.id)
     order = ready_for_serving(s, order, s.token)
     original = s.service.clock
@@ -749,7 +750,7 @@ def test_paid_order_is_never_refunded_and_becomes_no_show(order_system: System) 
             ).scalar_one()
             == 1
         )
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         s.service.transition(
             s.token, order.id, uuid4(), "completed", order.version + 1, order.pickup_code or ""
         )
@@ -765,7 +766,7 @@ def test_serving_permissions_code_csrf_and_no_code_in_staff_dto(
     cook, cashier = serving_staff
     with pytest.raises(IdentityError):
         s.service.transition(cashier, order.id, uuid4(), "preparing", order.version)
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         s.service.transition(cook, order.id, uuid4(), "ready", order.version)
     order = ready_for_serving(s, order, cook)
     key = uuid4()
@@ -773,7 +774,7 @@ def test_serving_permissions_code_csrf_and_no_code_in_staff_dto(
         s.service.transition(
             cook, order.id, key, "completed", order.version, order.pickup_code or ""
         )
-    with pytest.raises(InventoryError, match="Код"):
+    with pytest.raises(BusinessError, match="Код"):
         s.service.transition(cashier, order.id, key, "completed", order.version, "WRONG123")
     with TestClient(create_app(s.settings)) as client:
         client.cookies.set(s.settings.session_cookie, cashier)
@@ -807,9 +808,9 @@ def test_staff_order_lookup_for_qr_scanner_hides_code_and_drafts(
     found = s.service.staff_order(cashier, order.id)
     assert found.id == order.id and found.version == order.version
     draft = s.buy(guest, *s.setup()[:2], 1)
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         s.service.staff_order(cashier, draft.id)
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         s.service.staff_order(cook, uuid4())
     with pytest.raises(IdentityError):
         s.service.staff_order(guest, order.id)
@@ -829,7 +830,7 @@ def test_serving_suspended_and_expired_batches_never_leave_stock(order_system: S
     guest, order, batch = paid_for_serving(s)
     order = ready_for_serving(s, order, s.token)
     s.stock.change(s.token, uuid4(), batch, "suspend", None, None, "Проверка пригодности", 2)
-    with pytest.raises(InventoryError, match="Выдача запрещена"):
+    with pytest.raises(BusinessError, match="Выдача запрещена"):
         s.service.transition(
             s.token, order.id, uuid4(), "completed", order.version, order.pickup_code or ""
         )
@@ -837,7 +838,7 @@ def test_serving_suspended_and_expired_batches_never_leave_stock(order_system: S
     original = s.service.clock
     s.service.clock = lambda: s.now + timedelta(days=1)
     try:
-        with pytest.raises(InventoryError, match="Выдача запрещена"):
+        with pytest.raises(BusinessError, match="Выдача запрещена"):
             s.service.transition(
                 s.token, order.id, uuid4(), "completed", order.version, order.pickup_code or ""
             )

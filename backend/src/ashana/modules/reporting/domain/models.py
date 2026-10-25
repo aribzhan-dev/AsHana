@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from ashana.modules.inventory.domain.models import invalid
+from ashana.shared.domain import invalid
 
 ReportKind = Literal[
     "sales",

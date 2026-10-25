@@ -21,7 +21,6 @@ from ashana.bootstrap.settings import Settings
 from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError, Role
 from ashana.modules.inventory.application.service import InventoryService
-from ashana.modules.inventory.domain.models import InventoryError, Result
 from ashana.modules.inventory.infrastructure.database import (
     PostgresInventoryRepository,
     batches,
@@ -35,6 +34,7 @@ from ashana.modules.production.infrastructure.database import (
     productions,
     recipes,
 )
+from ashana.shared.domain import BusinessError, Result
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("ASHANA_RUN_INTEGRATION") != "1", reason="Нужен изолированный PostgreSQL"
@@ -157,7 +157,7 @@ def test_production_versions_are_immutable_and_multiple_batches(kitchen: Kitchen
         if p.id in {first.subject_id, second.subject_id}
     )
     assert next(r for r in kitchen.service.recipes(kitchen.token) if r.id == old.id) == old
-    with pytest.raises(InventoryError, match="Рецепт изменился"):
+    with pytest.raises(BusinessError, match="Рецепт изменился"):
         kitchen.service.create_recipe(
             kitchen.token,
             uuid4(),
@@ -199,7 +199,7 @@ def test_production_duplicate_and_last_ingredient_races(kitchen: Kitchen) -> Non
     with ThreadPoolExecutor(max_workers=2) as pool:
         outcomes = list(pool.map(lambda _: kitchen.produce(recipe, stock, key), range(2)))
     assert outcomes[0] == outcomes[1]
-    with pytest.raises(InventoryError) as mismatch:
+    with pytest.raises(BusinessError) as mismatch:
         kitchen.produce(recipe, stock, key, amount="0.5")
     assert mismatch.value.code == "IDEMPOTENCY_CONFLICT"
     recipe, stock = kitchen.case()
@@ -208,7 +208,7 @@ def test_production_duplicate_and_last_ingredient_races(kitchen: Kitchen) -> Non
         try:
             kitchen.produce(recipe, list(reversed(stock)) if reverse else stock)
             return "ok"
-        except InventoryError as error:
+        except BusinessError as error:
             return error.code
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -259,7 +259,7 @@ def test_production_unfit_reserved_shortage_and_missing_ingredient_rollback(
             if cause == "duplicate"
             else stock
         )
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             kitchen.produce(recipe, requested)
         with kitchen.engine.connect() as connection:
             assert (
@@ -427,7 +427,7 @@ def test_recipe_version_race_and_invalid_recipe_lines(kitchen: Kitchen) -> None:
                 [IngredientInput(line.item_id, "0.5", "kg") for line in old.lines],
             )
             return "ok"
-        except InventoryError as error:
+        except BusinessError as error:
             return error.code
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -440,7 +440,7 @@ def test_recipe_version_race_and_invalid_recipe_lines(kitchen: Kitchen) -> None:
         [IngredientInput(old.lines[0].item_id, "0", "kg")],
     ]
     for ingredients in invalid_lines:
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             kitchen.service.create_recipe(
                 kitchen.token,
                 uuid4(),
@@ -453,7 +453,7 @@ def test_recipe_version_race_and_invalid_recipe_lines(kitchen: Kitchen) -> None:
                 ingredients,
             )
     for confirmed, expiry in ((False, EXPIRY), (True, datetime.now(UTC) - timedelta(seconds=1))):
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             kitchen.service.produce(
                 kitchen.token,
                 uuid4(),
@@ -506,7 +506,7 @@ def test_production_competes_with_stock_write_off_and_keys_are_actor_scoped(
         try:
             kitchen.produce(recipe, stock)
             return "ok"
-        except InventoryError as error:
+        except BusinessError as error:
             return error.code
 
     def write_off() -> str:
@@ -522,7 +522,7 @@ def test_production_competes_with_stock_write_off_and_keys_are_actor_scoped(
                 1,
             )
             return "ok"
-        except InventoryError as error:
+        except BusinessError as error:
             return error.code
 
     with ThreadPoolExecutor(max_workers=2) as pool:

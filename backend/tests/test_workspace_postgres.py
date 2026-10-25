@@ -1,12 +1,17 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
+from typing import cast
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
 
+from ashana.bootstrap.settings import Settings
+from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError
-from ashana.modules.identity.infrastructure.database import audit
+from ashana.modules.identity.infrastructure.database import PostgresIdentityRepository, audit
+
+Identity = tuple[Settings, IdentityService, str]
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("ASHANA_RUN_INTEGRATION") != "1", reason="Нужен изолированный PostgreSQL"
@@ -14,7 +19,9 @@ pytestmark = pytest.mark.skipif(
 
 
 # The shared administrator token: logins per account are rate limited for the whole run.
-def test_custom_roles_permissions_revocation_audit_and_concurrent_edits(system, operations_admin):
+def test_custom_roles_permissions_revocation_audit_and_concurrent_edits(
+    system: Identity, operations_admin: str
+) -> None:
     _, identity, password = system
     token = operations_admin
     role = identity.save_role(token, "dispatch", "Выдача", frozenset({"kitchen.read"}), None)
@@ -44,7 +51,7 @@ def test_custom_roles_permissions_revocation_audit_and_concurrent_edits(system, 
     with pytest.raises(IdentityError):
         identity.save_role(token, "invalid", "Неверно", frozenset({"anything"}), None)
 
-    def update(name):
+    def update(name: str) -> str:
         try:
             identity.save_role(token, changed.code, name, frozenset({"pos.sell"}), changed.version)
             return "ok"
@@ -56,16 +63,15 @@ def test_custom_roles_permissions_revocation_audit_and_concurrent_edits(system, 
     assert sorted(outcomes) == ["CONFLICT", "ok"]
     with identity.uow() as uow:
         rows = (
-            uow.repository.connection.execute(
-                select(audit.c.details).where(audit.c.action == "role_updated")
-            )
+            cast(PostgresIdentityRepository, uow.repository)
+            .connection.execute(select(audit.c.details).where(audit.c.action == "role_updated"))
             .scalars()
             .all()
         )
     assert any(r.get("role") == ["dispatch"] for r in rows)
 
 
-def test_role_creation_conflict_is_not_overwrite(system, operations_admin):
+def test_role_creation_conflict_is_not_overwrite(system: Identity, operations_admin: str) -> None:
     _, identity, _ = system
     token = operations_admin
     code = "role_" + uuid4().hex[:10]

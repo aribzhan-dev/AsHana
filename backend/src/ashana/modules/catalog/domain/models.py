@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from ashana.modules.inventory.domain.models import invalid
+from ashana.shared.domain import invalid
 
 ALMATY = ZoneInfo("Asia/Almaty")
 

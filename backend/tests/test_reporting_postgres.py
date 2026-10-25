@@ -1,6 +1,7 @@
 import os
 from dataclasses import replace
 from datetime import timedelta
+from typing import cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -15,10 +16,16 @@ from test_orders_postgres import order_system as _order_system
 from ashana.bootstrap.app import create_app
 from ashana.bootstrap.pos import pos_service
 from ashana.bootstrap.reporting import reporting_service
+from ashana.bootstrap.settings import Settings
+from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError, Role
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.orders.domain.models import Choice
+from ashana.modules.reporting.application.service import ReportingService
 from ashana.modules.reporting.domain.models import ReportFilter
+from ashana.modules.reporting.infrastructure.database import PostgresReportUnitOfWork
+from ashana.shared.domain import BusinessError
+
+Identity = tuple[Settings, IdentityService, str]
 
 report_system = _order_system
 pytestmark = pytest.mark.skipif(
@@ -26,18 +33,21 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def setup_report(s, system):
+def setup_report(s: System, system: Identity) -> tuple[ReportingService, ReportFilter]:
     reports = reporting_service(s.engine, system[1])
     day = s.now.astimezone(ZoneInfo("Asia/Almaty")).date()
     return reports, ReportFilter(day, day)
 
 
-def test_reports_sales_events_modes_channels_and_pagination(report_system: System, system) -> None:
+def test_reports_sales_events_modes_channels_and_pagination(
+    report_system: System, system: Identity
+) -> None:
     s = report_system
     reports, filters = setup_report(s, system)
     entry, slot, _ = s.setup("20")
     with s.service.uow() as uow:
         card = uow.catalog.entry(entry)
+        assert card is not None
     filters = replace(filters, item_id=card.item_id)
     guest = s.guest()
     unpaid = s.buy(guest, entry, slot)
@@ -52,10 +62,12 @@ def test_reports_sales_events_modes_channels_and_pagination(report_system: Syste
     ready = s.service.transition(s.token, paid.id, uuid4(), "ready", ready.version)
     key = uuid4()
     for _ in range(2):
-        s.service.transition(s.token, paid.id, key, "completed", ready.version, ready.pickup_code)
+        s.service.transition(
+            s.token, paid.id, key, "completed", ready.version, ready.pickup_code or ""
+        )
     second = s.buy(guest, entry, slot, 2)
     s.service.mock_payment(guest, second.id, uuid4(), "success")
-    with pytest.raises(InventoryError, match="нельзя отменить"):
+    with pytest.raises(BusinessError, match="нельзя отменить"):
         s.service.cancel(guest, second.id)
     pending_cancel = s.buy(guest, entry, slot)
     s.service.cancel(guest, pending_cancel.id)
@@ -82,13 +94,14 @@ def test_reports_sales_events_modes_channels_and_pagination(report_system: Syste
 
 
 def test_reports_stock_units_writeoffs_and_count_are_distinct(
-    report_system: System, system
+    report_system: System, system: Identity
 ) -> None:
     s = report_system
     reports, filters = setup_report(s, system)
     entry, slot, batch = s.setup("10")
     with s.service.uow() as uow:
         card = uow.catalog.entry(entry)
+        assert card is not None
     filters = replace(filters, item_id=card.item_id)
     s.buy(s.guest(), entry, slot, 2)
     s.stock.change(s.token, uuid4(), batch, "write_off", "1", "pcs", "Демо списание", 2)
@@ -126,7 +139,9 @@ def test_reports_stock_units_writeoffs_and_count_are_distinct(
     assert reports.read(s.token, "writeoffs", future).total_rows == 0
 
 
-def test_reports_production_actual_output_not_sales(report_system: System, system) -> None:
+def test_reports_production_actual_output_not_sales(
+    report_system: System, system: Identity
+) -> None:
     from ashana.bootstrap.production import production_service
     from ashana.modules.production.domain.models import ConsumptionInput, IngredientInput
 
@@ -168,12 +183,15 @@ def test_reports_production_actual_output_not_sales(report_system: System, syste
     assert reports.read(s.token, "writeoffs", replace(filters, item_id=raw)).total_rows == 0
 
 
-def test_reports_almaty_day_boundary_uses_event_time(report_system: System, system) -> None:
+def test_reports_almaty_day_boundary_uses_event_time(
+    report_system: System, system: Identity
+) -> None:
     s = report_system
     reports, filters = setup_report(s, system)
     entry, _, _ = s.setup("3")
     with s.service.uow() as uow:
         card = uow.catalog.entry(entry)
+        assert card is not None
     filters = replace(filters, item_id=card.item_id)
     pos = pos_service(s.engine, system[1], s.service)
     sale = pos.sell(s.token, uuid4(), [Choice(entry, 1, 12345)], "success")
@@ -198,7 +216,7 @@ def test_reports_almaty_day_boundary_uses_event_time(report_system: System, syst
     assert reports.read(s.token, "sales", filters).totals["paid_minor"] == str(2 * 12345)
 
 
-def test_reports_auth_read_only_and_http_contract(report_system: System, system) -> None:
+def test_reports_auth_read_only_and_http_contract(report_system: System, system: Identity) -> None:
     s = report_system
     reports, filters = setup_report(s, system)
     identity, password = system[1:]
@@ -213,7 +231,9 @@ def test_reports_auth_read_only_and_http_contract(report_system: System, system)
     with reports.uow() as uow:
         uow.authorize(s.token)
         with pytest.raises(DBAPIError):
-            uow.connection.execute(text("UPDATE inventory_items SET name=name WHERE false"))
+            cast(PostgresReportUnitOfWork, uow).connection.execute(
+                text("UPDATE inventory_items SET name=name WHERE false")
+            )
     with TestClient(create_app(s.settings)) as client:
         path = f"/api/v1/reports/sales?start={filters.start}&end={filters.end}"
         assert client.get(path).status_code == 401
@@ -230,7 +250,9 @@ def test_reports_auth_read_only_and_http_contract(report_system: System, system)
         assert client.get("/api/v1/reports/options/items").status_code == 200
 
 
-def test_dashboard_atomic_totals_ranking_and_zero_sales(report_system: System, system) -> None:
+def test_dashboard_atomic_totals_ranking_and_zero_sales(
+    report_system: System, system: Identity
+) -> None:
     s = report_system
     reports, filters = setup_report(s, system)
     entry, _, _ = s.setup("12")

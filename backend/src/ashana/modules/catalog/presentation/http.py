@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ashana.bootstrap.errors import ErrorResponse
+from ashana.bootstrap.http import OperationResponse, enforce_csrf, session_token
 from ashana.modules.catalog.application.service import CatalogService
-from ashana.modules.identity.presentation.http import enforce_csrf, session_token
-from ashana.modules.inventory.domain.models import InventoryError
-from ashana.modules.inventory.presentation.http import ItemResponse, OperationResponse
+from ashana.modules.inventory.presentation.http import ItemResponse
+from ashana.shared.domain import BusinessError
 
 router = APIRouter(
     prefix="/api/v1/catalog",
@@ -278,7 +278,7 @@ media = APIRouter(prefix="/api/v1/media", tags=["Меню"])
 def menu_photo(entry_id: UUID, request: Request, service: Service) -> Response:
     found = service.image(entry_id)
     if not found:
-        raise InventoryError("NOT_FOUND", "Фото не найдено")
+        raise BusinessError("NOT_FOUND", "Фото не найдено")
     data, digest = found
     return Response(
         content=data,

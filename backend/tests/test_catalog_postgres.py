@@ -29,9 +29,9 @@ from ashana.modules.catalog.infrastructure.database import (
 from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError, Role
 from ashana.modules.inventory.application.service import InventoryService
-from ashana.modules.inventory.domain.models import InventoryError, Result
 from ashana.modules.inventory.infrastructure.database import batches, requests
 from ashana.modules.production.domain.models import ConsumptionInput, IngredientInput
+from ashana.shared.domain import BusinessError, Result
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("ASHANA_RUN_INTEGRATION") != "1", reason="Нужен изолированный PostgreSQL"
@@ -156,7 +156,7 @@ def test_catalog_filters_finished_stock_and_sums_only_free_fit_batches(catalog: 
         catalog.token, uuid4(), stock[0].subject_id, "suspend", None, None, "Проверка меню", 1
     )
     assert entry.subject_id not in {e.id for e in catalog.service.menu()[1]}
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         catalog.entry(period, catalog.goods("raw"))
     prepared = catalog.goods("prepared")
     prepared_entry = catalog.entry(period, prepared)
@@ -291,12 +291,12 @@ def test_catalog_replay_stale_edits_and_audit_rollback(
                 False,
             )
             return "ok"
-        except InventoryError as error:
+        except BusinessError as error:
             return error.code
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(edit, ("Первая правка", "Вторая правка"))) == ["STALE_CATALOG", "ok"]
-    with pytest.raises(InventoryError) as mismatch:
+    with pytest.raises(BusinessError) as mismatch:
         catalog.service.save_period(
             catalog.token,
             key,
@@ -360,7 +360,7 @@ def test_catalog_replay_stale_edits_and_audit_rollback(
     catalog.service.save_entry(
         catalog.token, badkey, period.subject_id, None, 0, item.subject_id, "", "1 шт", 100, True
     )
-    with pytest.raises(InventoryError) as duplicate:
+    with pytest.raises(BusinessError) as duplicate:
         catalog.entry(period, item)
     assert duplicate.value.code == "MENU_ITEM_EXISTS"
 

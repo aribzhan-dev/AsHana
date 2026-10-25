@@ -6,17 +6,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from ashana.modules.inventory.domain.models import (
-    Batch,
-    InventoryError,
-    Item,
-    Movement,
-    Result,
-    change_quantity,
-    invalid,
-    quantity,
-    text_value,
-)
+from ashana.modules.inventory.domain.models import Batch, Item, Movement, change_quantity, quantity
 from ashana.modules.production.application.ports import ProductionUnitOfWork
 from ashana.modules.production.domain.models import (
     Consumption,
@@ -28,6 +18,7 @@ from ashana.modules.production.domain.models import (
     portion_size,
     whole_yield,
 )
+from ashana.shared.domain import BusinessError, Result, invalid, text_value
 
 
 class ProductionService:
@@ -43,7 +34,7 @@ class ProductionService:
             uow.authorize(token)
             recipe = uow.repository.recipe(recipe_id)
             if not recipe:
-                raise InventoryError("NOT_FOUND", "Версия рецепта не найдена")
+                raise BusinessError("NOT_FOUND", "Версия рецепта не найдена")
             return recipe
 
     def recipes(self, token: str, offset: int = 0, limit: int = 20) -> list[Recipe]:
@@ -112,7 +103,7 @@ class ProductionService:
                 raise invalid("output_item_id", "Выберите собственную продукцию со склада")
             current = uow.repository.lock_recipe(output.id)
             if current != previous_version:
-                raise InventoryError("STALE_RECIPE", "Рецепт изменился. Обновите список версий")
+                raise BusinessError("STALE_RECIPE", "Рецепт изменился. Обновите список версий")
             if not 1 <= len(lines) <= 30 or len({line.item_id for line in lines}) != len(lines):
                 raise invalid("lines", "Укажите от 1 до 30 разных ингредиентов")
             normalized = []
@@ -169,7 +160,7 @@ class ProductionService:
         def action(uow: ProductionUnitOfWork, actor: UUID) -> Result:
             recipe = uow.repository.recipe(recipe_id)
             if not recipe:
-                raise InventoryError("NOT_FOUND", "Версия рецепта не найдена")
+                raise BusinessError("NOT_FOUND", "Версия рецепта не найдена")
             if suitability_confirmed is not True:
                 raise invalid("suitability_confirmed", "Подтвердите пригодность выбранного сырья")
             count = whole_yield(actual_yield)
@@ -182,7 +173,7 @@ class ProductionService:
             for entry in sorted(consumption, key=lambda c: c.batch_id):
                 batch = uow.stock.batch(entry.batch_id, lock=True)
                 if not batch:
-                    raise InventoryError("NOT_FOUND", "Партия сырья не найдена")
+                    raise BusinessError("NOT_FOUND", "Партия сырья не найдена")
                 locked.append((entry, batch))
             # Evaluate expiry after waiting for every row lock, not at request arrival.
             now = self.clock()
@@ -196,7 +187,7 @@ class ProductionService:
             for entry, batch in locked:
                 amount = quantity(entry.quantity, entry.unit, batch.unit)
                 if batch.available_at(now) < amount:
-                    raise InventoryError(
+                    raise BusinessError(
                         "INSUFFICIENT_STOCK",
                         f"Недостаточно пригодного сырья: {batch.item_name}, {batch.label}",
                     )

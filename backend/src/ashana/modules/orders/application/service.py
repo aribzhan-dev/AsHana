@@ -8,7 +8,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from ashana.modules.identity.domain.models import IdentityError
-from ashana.modules.inventory.domain.models import InventoryError, Movement, invalid
+from ashana.modules.inventory.domain.models import Movement
 from ashana.modules.orders.application.ports import OrderUnitOfWork
 from ashana.modules.orders.domain.models import (
     Choice,
@@ -18,6 +18,7 @@ from ashana.modules.orders.domain.models import (
     Slot,
     validate_choices,
 )
+from ashana.shared.domain import BusinessError, invalid
 
 
 def fingerprint(value: object) -> str:
@@ -100,9 +101,9 @@ class OrderService:
                 return replay
             current = uow.repository.slot(id, lock=True) if id else None
             if id and not current:
-                raise InventoryError("NOT_FOUND", "Слот не найден")
+                raise BusinessError("NOT_FOUND", "Слот не найден")
             if expected_version != (current.version if current else 0):
-                raise InventoryError("STALE_ORDER", "Слот изменился. Обновите список")
+                raise BusinessError("STALE_ORDER", "Слот изменился. Обновите список")
             period = uow.catalog.period(period_id, lock=True)
             if not period or any(not t.tzinfo for t in (starts_at, ends_at, cutoff_at)):
                 raise invalid("starts_at", "Выберите период и время с часовым поясом")
@@ -152,7 +153,7 @@ class OrderService:
     ) -> Order:
         validate_choices(choices, self.policy.max_portions)
         if dining not in ("here", "takeaway"):
-            raise InventoryError("VALIDATION_ERROR", "Выберите: в столовой или с собой")
+            raise BusinessError("VALIDATION_ERROR", "Выберите: в столовой или с собой")
         parts: list[object] = [
             slot_id,
             sorted((asdict(c) for c in choices), key=lambda c: str(c["entry_id"])),
@@ -172,25 +173,25 @@ class OrderService:
                 assert order is not None
                 return order
             if uow.repository.active_count(guest) >= self.policy.max_active:
-                raise InventoryError("ORDER_LIMIT", "Достигнут лимит активных заказов")
+                raise BusinessError("ORDER_LIMIT", "Достигнут лимит активных заказов")
             slot = uow.repository.slot(slot_id, lock=True)
             if not slot:
-                raise InventoryError("NOT_FOUND", "Слот не найден")
+                raise BusinessError("NOT_FOUND", "Слот не найден")
             period = uow.catalog.period(slot.period_id, lock=True)
             lines: list[OrderLine] = []
             for choice in sorted(choices, key=lambda c: c.entry_id):
                 entry = uow.catalog.entry(choice.entry_id, lock=True)
                 if not entry or entry.period_id != slot.period_id or not entry.published:
-                    raise InventoryError(
+                    raise BusinessError(
                         "MENU_UNAVAILABLE", "Позиция больше недоступна в выбранном периоде"
                     )
                 if entry.price_minor != choice.expected_price_minor:
-                    raise InventoryError(
+                    raise BusinessError(
                         "PRICE_CHANGED", "Цена изменилась. Обновите меню и проверьте корзину"
                     )
                 item = uow.stock.item(entry.item_id)
                 if not item or item.kind not in ("prepared", "purchased"):
-                    raise InventoryError("MENU_UNAVAILABLE", "Выберите готовую продукцию")
+                    raise BusinessError("MENU_UNAVAILABLE", "Выберите готовую продукцию")
                 lines.append(
                     OrderLine(
                         entry.id,
@@ -214,7 +215,7 @@ class OrderService:
                 or now + timedelta(seconds=self.policy.reservation_seconds) > slot.cutoff_at
                 or slot.occupied >= slot.capacity
             ):
-                raise InventoryError(
+                raise BusinessError(
                     "SLOT_UNAVAILABLE", "Приём в этот слот закрыт или мест больше нет"
                 )
             allocations: list[tuple[UUID, int]] = []
@@ -240,7 +241,7 @@ class OrderService:
                     if remaining == 0:
                         break
                 if remaining:
-                    raise InventoryError(
+                    raise BusinessError(
                         "INSUFFICIENT_STOCK",
                         f"Недостаточно пригодного остатка к выдаче: {line.name}",
                     )
@@ -285,11 +286,11 @@ class OrderService:
             replay = uow.repository.replay(guest, "mock_payment", key, payload)
             order = uow.repository.order(id, lock=True)
             if not order or order.guest_id != guest:
-                raise InventoryError("NOT_FOUND", "Оформление не найдено")
+                raise BusinessError("NOT_FOUND", "Оформление не найдено")
             if replay:
                 return order
             if order.status != "pending_payment":
-                raise InventoryError("CHECKOUT_CLOSED", "Оформление уже завершено. Обновите список")
+                raise BusinessError("CHECKOUT_CLOSED", "Оформление уже завершено. Обновите список")
             slot = uow.repository.slot(order.slot_id, lock=True)
             assert slot is not None
             allocations = sorted(uow.reservations.allocations(id))
@@ -303,7 +304,7 @@ class OrderService:
                 not batch or batch.status != "active" or batch.expires_at <= slot.ends_at
                 for batch in batches
             ):
-                raise InventoryError(
+                raise BusinessError(
                     "STOCK_UNAVAILABLE",
                     "Пригодность товара изменилась. Отмените оформление и обратитесь к сотруднику",
                 )
@@ -354,16 +355,16 @@ class OrderService:
             replay = uow.repository.replay(actor, "kitchen", key, payload)
             order = uow.repository.order(id, lock=True)
             if not order or order.status == "pending_payment":
-                raise InventoryError("NOT_FOUND", "Оплаченный заказ не найден")
+                raise BusinessError("NOT_FOUND", "Оплаченный заказ не найден")
             if replay:
                 return order
             if order.status != required[target]:
-                raise InventoryError(
+                raise BusinessError(
                     "ORDER_STATE",
                     "Действие недоступно: заказ уже изменился или выдан. Обновите список",
                 )
             if order.version != expected_version:
-                raise InventoryError("STALE_ORDER", "Заказ изменился. Обновите список")
+                raise BusinessError("STALE_ORDER", "Заказ изменился. Обновите список")
             if target == "completed" and (
                 not order.pickup_code
                 or not pickup_code.isascii()
@@ -376,7 +377,7 @@ class OrderService:
             if not allocations or sum(q for _, q in allocations) != sum(
                 line.quantity for line in order.lines
             ):
-                raise InventoryError(
+                raise BusinessError(
                     "STOCK_UNAVAILABLE", "Резерв неполный. Обратитесь к управляющему"
                 )
             for batch, (_, quantity) in zip(batches, allocations, strict=True):
@@ -388,7 +389,7 @@ class OrderService:
                     or batch.reserved < quantity
                     or batch.on_hand < quantity
                 ):
-                    raise InventoryError(
+                    raise BusinessError(
                         "STOCK_UNAVAILABLE",
                         "Партия приостановлена или непригодна. Выдача запрещена",
                     )
@@ -439,7 +440,7 @@ class OrderService:
             uow.authorize(token, "kitchen.read")
             order = uow.repository.order(id)
             if not order or order.status == "pending_payment":
-                raise InventoryError("NOT_FOUND", "Заказ не найден")
+                raise BusinessError("NOT_FOUND", "Заказ не найден")
             return self._issues(uow, [order])[0]
 
     def _issues(self, uow: OrderUnitOfWork, orders: list[Order]) -> list[Order]:
@@ -451,12 +452,12 @@ class OrderService:
             guest = self._guest(uow, token)
             order = uow.repository.order(id, lock=True)
             if not order or order.guest_id != guest:
-                raise InventoryError("NOT_FOUND", "Заказ не найден")
+                raise BusinessError("NOT_FOUND", "Заказ не найден")
             if order.status in ("cancelled", "expired"):
                 return order
             # Owner's rule: site orders are paid online only and are never refunded.
             if order.status != "pending_payment":
-                raise InventoryError(
+                raise BusinessError(
                     "ORDER_STATE",
                     "Оплаченный заказ нельзя отменить: деньги за заказы с сайта не возвращаются",
                 )

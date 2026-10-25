@@ -10,8 +10,8 @@ from test_orders_postgres import System
 from test_orders_postgres import order_system as _order_system
 
 from ashana.bootstrap.app import create_app
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.inventory.infrastructure.images import normalize_photo
+from ashana.shared.domain import BusinessError
 
 image_system = _order_system
 pytestmark = pytest.mark.skipif(
@@ -35,7 +35,7 @@ def test_photo_is_resized_reencoded_and_loses_metadata() -> None:
         assert not image.getexif()
     assert b"PhoneMaker" not in photo
     for bad in (b"", b"<svg onload=alert(1)>", b"GIF89a" + b"0" * 20):
-        with pytest.raises(InventoryError):
+        with pytest.raises(BusinessError):
             normalize_photo(bad)
 
 

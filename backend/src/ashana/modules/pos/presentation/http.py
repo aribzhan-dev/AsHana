@@ -7,15 +7,10 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ashana.bootstrap.errors import ErrorResponse
+from ashana.bootstrap.http import OperationResponse, enforce_csrf, session_token
 from ashana.modules.catalog.presentation.http import PublicMenuEntry
-from ashana.modules.identity.presentation.http import enforce_csrf, session_token
 from ashana.modules.inventory.application.service import InventoryService
-from ashana.modules.inventory.presentation.http import (
-    BatchResponse,
-    ChangeInput,
-    DirectoryResponse,
-    OperationResponse,
-)
+from ashana.modules.inventory.presentation.http import BatchResponse, ChangeInput, DirectoryResponse
 from ashana.modules.orders.domain.models import Choice
 from ashana.modules.orders.presentation.http import OrderChoice, OrderLineResponse
 from ashana.modules.pos.application.service import PosService

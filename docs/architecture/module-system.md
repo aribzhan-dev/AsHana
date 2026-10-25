@@ -12,8 +12,14 @@
 | notifications | Сохранённые события и доставка уведомлений |
 | reporting | Согласованные read models продаж/остатков, без изменения чужих данных |
 
-Общий shared содержит только базовые типы денег, clock, идентификаторы и контракт UoW.
+Общий пакет `ashana/shared/domain.py` (с 24.10.2026) содержит только то, что нужно всем модулям:
+`BusinessError` (нарушение правила столовой с русским сообщением; раньше называлась
+`InventoryError` и жила в складе), `invalid`, `text_value` и `Result` (итог идемпотентной записи).
 Не превращать shared в склад произвольной бизнес-логики.
+Общие HTTP-помощники маршрутов — `bootstrap/http.py`: `session_token`, `enforce_csrf`,
+`settings_for`, `OperationResponse`. Модули больше не импортируют их из чужого presentation.
+Каждый модуль описывает хранилище портом (`application/ports.py`, Protocol); слой application
+не импортирует infrastructure, SQLAlchemy и FastAPI — это проверяется mypy.
 Граф зависимостей контрактов должен быть ацикличным: orders оркестрирует inventory;
 production оркестрирует inventory; payments подтверждает заказ через входной application contract
 orders в общей транзакции, orders не импортирует payments.

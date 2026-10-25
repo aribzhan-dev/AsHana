@@ -18,11 +18,12 @@ from ashana.bootstrap.reporting import reporting_service
 from ashana.bootstrap.settings import Settings
 from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError, Role
-from ashana.modules.inventory.domain.models import InventoryError, InvoiceLine
+from ashana.modules.inventory.domain.models import InvoiceLine
 from ashana.modules.inventory.infrastructure.database import batches, items, movements
 from ashana.modules.orders.domain.models import Choice
 from ashana.modules.pos.application.service import PosService
 from ashana.modules.reporting.domain.models import ReportFilter, ReportKind
+from ashana.shared.domain import BusinessError
 
 ops_system = _order_system
 pytestmark = pytest.mark.skipif(
@@ -49,25 +50,25 @@ def on_hand(s: System, batch: UUID) -> Decimal:
 def test_categories_are_one_shared_directory(ops_system: System) -> None:
     s = ops_system
     name = f"Напитки {uuid4().hex[:6]}"
-    with pytest.raises(InventoryError, match="категорию"):
+    with pytest.raises(BusinessError, match="категорию"):
         s.stock.create_item(s.token, uuid4(), f"Сок {uuid4()}", "purchased", "pcs", category=name)
     s.stock.create_directory(s.token, uuid4(), "category", name)
-    with pytest.raises(InventoryError, match="уже существует"):
+    with pytest.raises(BusinessError, match="уже существует"):
         s.stock.create_directory(s.token, uuid4(), "category", name.upper())
     item = s.stock.create_item(
         s.token, uuid4(), f"Сок {uuid4()}", "purchased", "pcs", category=name.lower()
     ).subject_id
     with s.engine.connect() as c:
         assert c.execute(select(items.c.category).where(items.c.id == item)).scalar_one() == name
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         s.stock.create_directory(s.token, uuid4(), "category", "К" * 61)
 
 
 def test_always_on_menu_goods_join_open_periods_once(ops_system: System) -> None:
     s = ops_system
-    with pytest.raises(InventoryError, match="Постоянно"):
+    with pytest.raises(BusinessError, match="Постоянно"):
         s.stock.create_item(s.token, uuid4(), f"Мука {uuid4()}", "raw", "kg", always_on_menu=True)
-    with pytest.raises(InventoryError, match="Постоянно"):
+    with pytest.raises(BusinessError, match="Постоянно"):
         s.stock.create_item(
             s.token, uuid4(), f"Кола {uuid4()}", "purchased", "pcs", always_on_menu=True
         )
@@ -150,9 +151,9 @@ def test_dining_choice_is_saved_and_part_of_replay(ops_system: System) -> None:
     order = s.service.checkout(guest, key, slot, [Choice(entry, 1, 12345)], "takeaway")
     assert order.dining == "takeaway"
     assert s.service.checkout(guest, key, slot, [Choice(entry, 1, 12345)], "takeaway") == order
-    with pytest.raises(InventoryError, match="ключ"):
+    with pytest.raises(BusinessError, match="ключ"):
         s.service.checkout(guest, key, slot, [Choice(entry, 1, 12345)], "here")
-    with pytest.raises(InventoryError, match="с собой"):
+    with pytest.raises(BusinessError, match="с собой"):
         s.service.checkout(guest, uuid4(), slot, [Choice(entry, 1, 12345)], "outside")
     paid = s.service.mock_payment(guest, order.id, uuid4(), "success")
     assert paid.dining == "takeaway"
@@ -181,15 +182,15 @@ def test_counter_return_restock_limits_replay_and_race(
     online_entry, slot, _ = s.setup("5")
     guest = s.guest()
     online = s.service.mock_payment(guest, s.buy(guest, online_entry, slot).id, uuid4(), "success")
-    with pytest.raises(InventoryError, match="продажа не найдена"):
+    with pytest.raises(BusinessError, match="продажа не найдена"):
         pos.return_sale(s.token, uuid4(), online.id, {online_entry: 1}, "С сайта", "restock")
-    with pytest.raises(InventoryError, match="больше проданного"):
+    with pytest.raises(BusinessError, match="больше проданного"):
         pos.return_sale(s.token, uuid4(), sale.id, {entry: 2}, "Ещё", "write_off")
 
     def attempt(_: int) -> object:
         try:
             return pos.return_sale(s.token, uuid4(), sale.id, {entry: 1}, "Гонка", "restock")
-        except InventoryError as e:
+        except BusinessError as e:
             return e.code
 
     with ThreadPoolExecutor(2) as pool:
@@ -235,7 +236,7 @@ def test_supplier_debt_partial_payments_and_report(ops_system: System, system: I
     rice = s.stock.create_item(s.token, uuid4(), f"Рис {uuid4()}", "raw", "kg").subject_id
     line = InvoiceLine(rice, "2", "kg", 50000, s.now + timedelta(days=3))
     warehouse = UUID("00000000-0000-0000-0000-000000000001")
-    with pytest.raises(InventoryError, match="Оплачено"):
+    with pytest.raises(BusinessError, match="Оплачено"):
         s.stock.receive_invoice(
             s.token, uuid4(), str(uuid4()), supplier, warehouse, cash, s.now, 0, "", [line],
             paid_minor=100001,
@@ -248,7 +249,7 @@ def test_supplier_debt_partial_payments_and_report(ops_system: System, system: I
     def pay(amount: int) -> object:
         try:
             return s.stock.pay_invoice(s.token, uuid4(), invoice_id, amount, cash, s.now)
-        except InventoryError as e:
+        except BusinessError as e:
             return e.code
 
     with ThreadPoolExecutor(2) as pool:

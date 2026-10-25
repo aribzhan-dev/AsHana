@@ -7,15 +7,19 @@ import pytest
 
 from ashana.bootstrap.database import create_database_engine
 from ashana.bootstrap.inventory import inventory_service
+from ashana.bootstrap.settings import Settings
+from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError, Role
-from ashana.modules.inventory.domain.models import InventoryError
+from ashana.shared.domain import BusinessError
+
+Identity = tuple[Settings, IdentityService, str]
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("ASHANA_RUN_INTEGRATION") != "1", reason="Нужен изолированный PostgreSQL"
 )
 
 
-def test_product_profiles_and_author_names(system, operations_admin):
+def test_product_profiles_and_author_names(system: Identity, operations_admin: str) -> None:
     settings, identity, password = system
     engine = create_database_engine(settings)
     service = inventory_service(engine, identity)
@@ -23,7 +27,7 @@ def test_product_profiles_and_author_names(system, operations_admin):
     # Categories come from the shared directory since OPERATIONS-02.
     for category in ("Вода", "Напитки"):
         # Another test in this database may have created it already.
-        with suppress(InventoryError):
+        with suppress(BusinessError):
             service.create_directory(token, uuid4(), "category", category)
     result = service.create_item(
         token, uuid4(), f"Вода {uuid4()}", "purchased", "pcs", None, "Вода", 10000, 20000
@@ -43,9 +47,9 @@ def test_product_profiles_and_author_names(system, operations_admin):
     updated = service.edit_item(*args)
     assert updated.version == 2
     assert service.edit_item(*args) == updated
-    with pytest.raises(InventoryError, match="изменился"):
+    with pytest.raises(BusinessError, match="изменился"):
         service.edit_item(token, uuid4(), result.subject_id, "Старый", None, "", 0, 0, 1)
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         service.edit_item(token, uuid4(), result.subject_id, "Неверный", None, "", -1, 0, 2)
     now = datetime.now(UTC)
     receipt = service.receive(

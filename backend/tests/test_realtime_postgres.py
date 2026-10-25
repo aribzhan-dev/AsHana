@@ -13,8 +13,8 @@ from ashana.bootstrap.app import create_app
 from ashana.bootstrap.settings import Settings
 from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import Role
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.orders.domain.models import Choice
+from ashana.shared.domain import BusinessError
 
 live_system = _order_system
 pytestmark = pytest.mark.skipif(
@@ -94,7 +94,7 @@ def test_failed_checkout_sends_nothing_before_next_real_change(live_system: Syst
         wait_listening(client)
         client.cookies.set(s.settings.session_cookie, s.token)
         with client.websocket_connect(PATH, headers={"origin": origin}) as ws:
-            with pytest.raises(InventoryError):
+            with pytest.raises(BusinessError):
                 s.service.checkout(s.guest(), uuid4(), slot, [Choice(entry, 5, 12345)])
             draft = s.buy(s.guest(), entry, slot)
             event = next_event(ws, "orders", "created")

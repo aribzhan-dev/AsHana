@@ -1,0 +1,220 @@
+/* Debts, live status, finance and payroll, photos, settings and staff cards. */
+.debt {
+  color: var(--danger);
+}
+.invoice-amount {
+  display: grid;
+  justify-items: end;
+}
+.return-lines {
+  display: grid;
+  gap: 10px;
+}
+.cutlery-line strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.live-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.live-badge i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.live-live {
+  color: var(--success);
+}
+.live-live i {
+  background: var(--success);
+  box-shadow: 0 0 0 4px var(--success-soft);
+}
+.live-offline {
+  color: var(--danger);
+}
+.live-offline i {
+  background: var(--danger);
+}
+.kitchen-live {
+  display: grid;
+  gap: 10px;
+}
+.incoming {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--accent);
+  color: #17181b;
+  animation: incoming-in 0.3s ease-out;
+}
+.incoming > div {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+.incoming .button {
+  color: #17181b;
+}
+@keyframes incoming-in {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .incoming {
+    animation: none;
+  }
+}
+.report-nav .report-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.report-nav .report-link svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+@media (min-width: 1100px) {
+  .report-nav .report-link {
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+  }
+  .report-nav .report-link:hover {
+    background: var(--surface-2);
+  }
+}
+.pnl-table td:first-child {
+  font-weight: 500;
+}
+.pnl-table .pnl-total td {
+  font-weight: 800;
+  background: var(--surface-2);
+}
+.report-table td small {
+  display: block;
+  font-weight: 400;
+  margin-top: 2px;
+}
+.report-table tr.muted td {
+  color: var(--muted);
+}
+.report-table tr.strike td:not(:last-child) {
+  text-decoration: line-through;
+}
+.payroll-table td:first-child {
+  min-width: 220px;
+}
+.plan-editor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.shift-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.food-photo {
+  object-fit: cover;
+  background: var(--surface-2);
+}
+.photo-field {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.photo-field img,
+.photo-field .food-art {
+  width: 96px;
+  height: 72px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+.photo-field input[type="file"] {
+  min-height: 0;
+  padding: 8px;
+  font-size: 13px;
+}
+.field-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.directory-usage {
+  display: flex !important;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.staff-details {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+.staff-details > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.staff-details dt {
+  color: var(--muted);
+}
+.staff-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.status-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid currentColor;
+  vertical-align: middle;
+}

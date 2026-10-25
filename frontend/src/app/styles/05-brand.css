@@ -1,0 +1,85 @@
+/* Brand redesign (ashana, 2026-10). */
+/* ---------- Redesign 2026-10: ashana brand, mockup-based ---------- */
+body {
+  background: var(--background);
+}
+h1 {
+  font-weight: 800;
+  letter-spacing: -1.2px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-arch {
+  fill: var(--text);
+}
+.logo-bowl {
+  fill: var(--accent);
+}
+.logo-rays {
+  stroke: var(--accent);
+}
+.logo-text {
+  display: grid;
+  line-height: 1;
+}
+.logo-word {
+  font-size: 26px;
+  font-weight: 850;
+  letter-spacing: -1.2px;
+  color: var(--text);
+}
+.logo-caption {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  font-weight: 500;
+}
+.header {
+  border-bottom: 0;
+  padding-bottom: 12px;
+}
+.header-link {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+.button {
+  border-radius: 14px;
+  font-weight: 700;
+}
+.button-primary,
+a.button-primary {
+  background: var(--accent);
+  color: var(--button-text);
+}
+.button-primary:not(:disabled):hover {
+  background: var(--accent-strong);
+  filter: none;
+}
+.button-secondary {
+  background: var(--surface);
+}
+.card {
+  border-radius: var(--radius);
+  border-color: var(--border);
+}
+.badge {
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+input,
+select {
+  background: var(--surface);
+  border-radius: 12px;
+}

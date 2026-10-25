@@ -29,10 +29,10 @@ from sqlalchemy.engine import Connection, Engine, RowMapping
 from ashana.modules.catalog.application.ports import CatalogRepository
 from ashana.modules.inventory.application.ports import InventoryRepository
 from ashana.modules.inventory.application.reservations import ReservationRepository
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.notifications.application.ports import NotificationWriter
 from ashana.modules.orders.application.ports import OrderRepository
 from ashana.modules.orders.domain.models import Order, OrderLine, Slot, short_number, tenge
+from ashana.shared.domain import BusinessError
 
 metadata = MetaData()
 Table("catalog_periods", metadata, Column("id", Uuid, primary_key=True))
@@ -355,7 +355,7 @@ class PostgresOrderRepository:
             .first()
         )
         if row and row["fingerprint"] != fingerprint:
-            raise InventoryError(
+            raise BusinessError(
                 "IDEMPOTENCY_CONFLICT", "Этот ключ уже использован с другими данными"
             )
         return row["subject_id"] if row else None

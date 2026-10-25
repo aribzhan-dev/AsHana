@@ -13,9 +13,9 @@ from ashana.bootstrap.settings import Settings
 from ashana.modules.finance.application.service import FinanceService
 from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError, Role
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.orders.domain.models import Choice
 from ashana.modules.pos.application.service import PosService
+from ashana.shared.domain import BusinessError
 
 finance_system = _order_system
 pytestmark = pytest.mark.skipif(
@@ -70,9 +70,9 @@ def test_profit_and_loss_moves_with_sale_cost_return_expense_and_commission(
     assert after.commission - before.commission in (740, 741)
     assert after.simple_profit == after.gross_profit - after.operating_expenses
     assert after.full_profit == after.simple_profit - after.commission - after.payroll
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         finance.add_expense(s.token, uuid4(), CASH, 100, CASH, s.now, "Не статья")
-    with pytest.raises(InventoryError, match="будущем"):
+    with pytest.raises(BusinessError, match="будущем"):
         finance.add_expense(s.token, uuid4(), RENT, 100, CASH, s.now + timedelta(days=2), "")
 
 
@@ -91,7 +91,7 @@ def test_payroll_combines_schemes_personal_sales_shifts_and_payments(
         s.token, key, None, 0, "Айгерим", "Кассир", user, True,
         10000000, 300000, 100000, 1000, "personal", 0, "full",
     ).subject_id == worker  # fmt: skip
-    with pytest.raises(InventoryError, match="привязан"):
+    with pytest.raises(BusinessError, match="привязан"):
         finance.save_worker(
             s.token, uuid4(), None, 0, "Двойник", "", user, True, 0, 0, 0, 0, "all", 0, "full"
         )
@@ -100,7 +100,7 @@ def test_payroll_combines_schemes_personal_sales_shifts_and_payments(
     pos.return_sale(s.token, uuid4(), sale.id, {entry: 1}, "Возврат", "write_off")
     start = s.now - timedelta(hours=9)
     finance.add_shift(s.token, uuid4(), worker, start, start + timedelta(hours=7, minutes=30), "")
-    with pytest.raises(InventoryError, match="24"):
+    with pytest.raises(BusinessError, match="24"):
         finance.add_shift(s.token, uuid4(), worker, start, start + timedelta(hours=25), "")
     wrong = finance.add_shift(
         s.token, uuid4(), worker, start - timedelta(days=1), start - timedelta(hours=20), ""
@@ -122,13 +122,13 @@ def test_self_shift_needs_link_one_open_shift_and_permissions(
 ) -> None:
     s = finance_system
     user, token = cashier(s, system)
-    with pytest.raises(InventoryError, match="не привязан"):
+    with pytest.raises(BusinessError, match="не привязан"):
         finance.toggle_shift(token, uuid4(), True)
     finance.save_worker(
         s.token, uuid4(), None, 0, "Мойщица", "", user, True, 0, 500000, 0, 0, "all", 0, "full"
     )  # fmt: skip
     finance.toggle_shift(token, uuid4(), True)
-    with pytest.raises(InventoryError, match="уже начата"):
+    with pytest.raises(BusinessError, match="уже начата"):
         finance.toggle_shift(token, uuid4(), True)
     worker, shift = finance.my_shift(token)
     assert worker and shift and shift.ends_at is None
@@ -156,13 +156,13 @@ def test_profit_share_owners_dividends_and_plans(
     free = 10000 - used
     if free > 0:
         owner = finance.save_owner(s.token, uuid4(), None, "Учредитель", free, True, 0).subject_id
-        with pytest.raises(InventoryError, match="больше 100"):
+        with pytest.raises(BusinessError, match="больше 100"):
             finance.save_owner(s.token, uuid4(), None, "Лишний", 1, True, 0)
         finance.pay_dividend(s.token, uuid4(), owner, month, 100000, CASH, s.now, "")
         paid = finance.details(s.token, month)["dividends"]
         assert any(d.subject_id == owner for d in paid)  # type: ignore[attr-defined]
     finance.save_plan(s.token, uuid4(), month, "Тест-план", 1000000, 0)
-    with pytest.raises(InventoryError, match="изменился"):
+    with pytest.raises(BusinessError, match="изменился"):
         finance.save_plan(s.token, uuid4(), month, "Тест-план", 2000000, 0)
     finance.save_plan(s.token, uuid4(), month, "Тест-план", 2000000, 1)
     plans = finance.details(s.token, month)["plans"]

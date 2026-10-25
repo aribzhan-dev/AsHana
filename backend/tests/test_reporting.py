@@ -2,8 +2,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.reporting.domain.models import ReportFilter
+from ashana.shared.domain import BusinessError
 
 
 def test_report_dates_use_almaty_inclusive_days() -> None:
@@ -22,5 +22,5 @@ def test_report_dates_use_almaty_inclusive_days() -> None:
     ],
 )
 def test_report_invalid_date_ranges(start: date, end: date) -> None:
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         ReportFilter(start, end).bounds()

@@ -2,7 +2,7 @@ import io
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from ashana.modules.inventory.domain.models import invalid
+from ashana.shared.domain import invalid
 
 MAX_UPLOAD = 8 * 1024 * 1024
 MAX_SIDE = 800

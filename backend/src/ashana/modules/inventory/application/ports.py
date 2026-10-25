@@ -10,8 +10,8 @@ from ashana.modules.inventory.domain.models import (
     InvoicePayment,
     Item,
     Movement,
-    Result,
 )
+from ashana.shared.domain import Result
 
 
 class InventoryRepository(Protocol):

@@ -1,7 +1,7 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,13 +13,18 @@ from test_orders_postgres import order_system as _order_system
 
 from ashana.bootstrap.app import create_app
 from ashana.bootstrap.pos import pos_service
+from ashana.bootstrap.settings import Settings
+from ashana.modules.identity.application.service import IdentityService
 from ashana.modules.identity.domain.models import IdentityError, Role
-from ashana.modules.inventory.domain.models import InventoryError
 from ashana.modules.inventory.infrastructure.database import batches, movements
 from ashana.modules.orders.domain.models import Choice, Order
 from ashana.modules.orders.infrastructure.database import slots
+from ashana.modules.pos.application.service import PosService
 from ashana.modules.pos.domain.models import Sale
 from ashana.modules.pos.infrastructure.database import PostgresSaleRepository, sales
+from ashana.shared.domain import BusinessError
+
+Identity = tuple[Settings, IdentityService, str]
 
 pos_system = _order_system
 
@@ -29,23 +34,25 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture(scope="module")
-def pos(pos_system, system):
+def pos(pos_system: System, system: Identity) -> PosService:
     s = pos_system
     return pos_service(s.engine, system[1], s.service)
 
 
-def test_pos_online_and_two_cashiers_last_portion(pos_system: System, pos) -> None:
+def test_pos_online_and_two_cashiers_last_portion(pos_system: System, pos: PosService) -> None:
     s = pos_system
     for online in (True, False):
         entry, slot, batch = s.setup("1")
         guest = s.guest()
 
-        def attempt(counter: bool, entry=entry, guest=guest, slot=slot):
+        def attempt(
+            counter: bool, entry: UUID = entry, guest: str = guest, slot: UUID = slot
+        ) -> object:
             try:
                 if counter:
                     return pos.sell(s.token, uuid4(), [Choice(entry, 1, 12345)], "success")
                 return s.buy(guest, entry, slot)
-            except InventoryError as e:
+            except BusinessError as e:
                 return e.code
 
         with ThreadPoolExecutor(2) as pool:
@@ -58,13 +65,13 @@ def test_pos_online_and_two_cashiers_last_portion(pos_system: System, pos) -> No
             assert row["on_hand"] in (0, 1)
 
 
-def test_pos_preserves_online_reserve_expiry_and_slot(pos_system: System, pos) -> None:
+def test_pos_preserves_online_reserve_expiry_and_slot(pos_system: System, pos: PosService) -> None:
     s = pos_system
     entry, slot, batch = s.setup("3")
     guest = s.guest()
     draft = s.buy(guest, entry, slot, 2)
     pos.sell(s.token, uuid4(), [Choice(entry, 1, 12345)], "success")
-    with pytest.raises(InventoryError, match="остатка"):
+    with pytest.raises(BusinessError, match="остатка"):
         pos.sell(s.token, uuid4(), [Choice(entry, 1, 12345)], "success")
     with s.engine.connect() as c:
         row = c.execute(select(batches).where(batches.c.id == batch)).mappings().one()
@@ -82,7 +89,9 @@ def test_pos_preserves_online_reserve_expiry_and_slot(pos_system: System, pos) -
         assert c.execute(select(slots.c.occupied).where(slots.c.id == slot)).scalar_one() == 0
 
 
-def test_pos_replay_snapshot_and_failed_timeout_no_stock(pos_system: System, pos) -> None:
+def test_pos_replay_snapshot_and_failed_timeout_no_stock(
+    pos_system: System, pos: PosService
+) -> None:
     s = pos_system
     entry, _, batch = s.setup("3")
     choices = [Choice(entry, 1, 12345)]
@@ -97,10 +106,11 @@ def test_pos_replay_snapshot_and_failed_timeout_no_stock(pos_system: System, pos
     with ThreadPoolExecutor(2) as pool:
         results = list(pool.map(lambda _: pos.sell(s.token, key, choices, "success"), range(2)))
     assert results[0] == results[1]
-    with pytest.raises(InventoryError, match="ключ"):
+    with pytest.raises(BusinessError, match="ключ"):
         pos.sell(s.token, key, [Choice(entry, 2, 12345)], "success")
     with s.service.uow() as uow:
         card = uow.catalog.entry(entry)
+        assert card is not None
     s.catalog.save_entry(
         s.token,
         uuid4(),
@@ -114,7 +124,7 @@ def test_pos_replay_snapshot_and_failed_timeout_no_stock(pos_system: System, pos
         True,
     )
     assert pos.sell(s.token, key, choices, "success").total_minor == 12345
-    with pytest.raises(InventoryError, match="Цена"):
+    with pytest.raises(BusinessError, match="Цена"):
         pos.sell(s.token, uuid4(), choices, "success")
     with s.engine.connect() as c:
         assert c.execute(select(batches.c.on_hand).where(batches.c.id == batch)).scalar_one() == 2
@@ -128,17 +138,19 @@ def test_pos_replay_snapshot_and_failed_timeout_no_stock(pos_system: System, pos
         )
 
 
-def test_pos_rollback_all_lines_and_after_record(pos_system: System, pos, monkeypatch) -> None:
+def test_pos_rollback_all_lines_and_after_record(
+    pos_system: System, pos: PosService, monkeypatch: pytest.MonkeyPatch
+) -> None:
     s = pos_system
     entry, _, batch = s.setup("2")
     other, _, unavailable = s.setup("1")
     key = uuid4()
     choices = [Choice(entry, 1, 12345), Choice(other, 2, 12345)]
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         pos.sell(s.token, key, choices, "success")
     original = PostgresSaleRepository.add
 
-    def fail(self, sale):
+    def fail(self: PostgresSaleRepository, sale: Sale) -> None:
         original(self, sale)
         raise RuntimeError("Сбой после записи чека")
 
@@ -155,7 +167,7 @@ def test_pos_rollback_all_lines_and_after_record(pos_system: System, pos, monkey
     assert pos.sell(s.token, key, [Choice(entry, 1, 12345)], "success").outcome == "success"
 
 
-def test_pos_unfit_batches_and_closed_period(pos_system: System, pos) -> None:
+def test_pos_unfit_batches_and_closed_period(pos_system: System, pos: PosService) -> None:
     s = pos_system
     for status in ("suspended", "expired", "future"):
         entry, _, batch = s.setup("1")
@@ -170,19 +182,21 @@ def test_pos_unfit_batches_and_closed_period(pos_system: System, pos) -> None:
                 )
             )
             c.execute(batches.update().where(batches.c.id == batch).values(**values))
-        with pytest.raises(InventoryError, match="остатка"):
+        with pytest.raises(BusinessError, match="остатка"):
             pos.sell(s.token, uuid4(), [Choice(entry, 1, 12345)], "success")
     entry, _, _ = s.setup()
     original = pos.clock
     pos.clock = lambda: s.now + timedelta(hours=5)
     try:
-        with pytest.raises(InventoryError, match="Период"):
+        with pytest.raises(BusinessError, match="Период"):
             pos.sell(s.token, uuid4(), [Choice(entry, 1, 12345)], "success")
     finally:
         pos.clock = original
 
 
-def test_pos_permissions_csrf_production_immutable_history(pos_system: System, pos, system) -> None:
+def test_pos_permissions_csrf_production_immutable_history(
+    pos_system: System, pos: PosService, system: Identity
+) -> None:
     s = pos_system
     settings, identity, password = system
     entry, _, _ = s.setup()
@@ -233,7 +247,7 @@ def test_pos_permissions_csrf_production_immutable_history(pos_system: System, p
 
 
 def test_pos_distinct_periods_cashiers_fefo_and_same_item_lines(
-    pos_system: System, pos, system
+    pos_system: System, pos: PosService, system: Identity
 ) -> None:
     s = pos_system
     identity, password = system[1:]
@@ -245,16 +259,18 @@ def test_pos_distinct_periods_cashiers_fefo_and_same_item_lines(
     other, _, _ = s.setup()
     with s.service.uow() as uow:
         first = uow.catalog.entry(entry)
+        assert first is not None
         other_card = uow.catalog.entry(other)
+        assert other_card is not None
     alternative = s.catalog.save_entry(
         s.token, uuid4(), other_card.period_id, None, 0, first.item_id, "", "1 шт", 12345, True
     ).subject_id
 
-    def attempt(pair):
+    def attempt(pair: tuple[str, UUID]) -> object:
         token, id = pair
         try:
             return pos.sell(token, uuid4(), [Choice(id, 1, 12345)], "success")
-        except InventoryError as exc:
+        except BusinessError as exc:
             return exc.code
 
     with ThreadPoolExecutor(2) as pool:
@@ -293,7 +309,9 @@ def test_pos_distinct_periods_cashiers_fefo_and_same_item_lines(
         assert c.execute(select(batches.c.on_hand).where(batches.c.id == batch)).scalar_one() == 0
 
 
-def test_pos_prepared_food_does_not_consume_raw_twice(pos_system: System, pos, system) -> None:
+def test_pos_prepared_food_does_not_consume_raw_twice(
+    pos_system: System, pos: PosService, system: Identity
+) -> None:
     from ashana.bootstrap.production import production_service
     from ashana.modules.production.domain.models import ConsumptionInput, IngredientInput
 
@@ -331,6 +349,7 @@ def test_pos_prepared_food_does_not_consume_raw_twice(pos_system: System, pos, s
     existing, _, _ = s.setup()
     with s.service.uow() as uow:
         card = uow.catalog.entry(existing)
+        assert card is not None
     entry = s.catalog.save_entry(
         s.token, uuid4(), card.period_id, None, 0, food, "", "250 г", 12345, True
     ).subject_id
@@ -353,7 +372,9 @@ def test_pos_prepared_food_does_not_consume_raw_twice(pos_system: System, pos, s
         )
 
 
-def test_payment_method_snapshot_and_writeoff_reserve(pos_system: System, pos, system) -> None:
+def test_payment_method_snapshot_and_writeoff_reserve(
+    pos_system: System, pos: PosService, system: Identity
+) -> None:
     from uuid import UUID
 
     from ashana.bootstrap.inventory import inventory_service
@@ -366,15 +387,15 @@ def test_payment_method_snapshot_and_writeoff_reserve(pos_system: System, pos, s
     draft = s.buy(s.guest(), entry, slot, 2)
     with s.engine.connect() as c:
         version = c.execute(select(batches.c.version).where(batches.c.id == batch)).scalar_one()
-    with pytest.raises(InventoryError, match="резерв"):
+    with pytest.raises(BusinessError, match="резерв"):
         cash.change(s.token, uuid4(), batch, "write_off", "2", "pcs", "Не продано", version)
     choices = [Choice(entry, 1, 12345)]
-    with pytest.raises(InventoryError):
+    with pytest.raises(BusinessError):
         pos.sell(s.token, uuid4(), choices, "success", uuid4())
     key = uuid4()
     sale = pos.sell(s.token, key, choices, "success", method.subject_id)
     assert sale.payment_method_name == "Терминал проверки"
     assert pos.sell(s.token, key, choices, "success", method.subject_id) == sale
-    with pytest.raises(InventoryError, match="ключ"):
+    with pytest.raises(BusinessError, match="ключ"):
         pos.sell(s.token, key, choices, "success", UUID("00000000-0000-0000-0000-000000000002"))
     assert draft.id

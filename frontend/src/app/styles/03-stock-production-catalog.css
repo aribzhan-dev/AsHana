@@ -1,0 +1,339 @@
+/* Stock, production and menu screens. */
+.stock-balances dt,
+.stock-details dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.stock-balances dd {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0;
+  overflow-wrap: anywhere;
+}
+.stock-balances small {
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+.stock-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.stock-details dd {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+.stock-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+.stock-items,
+.stock-history {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.stock-items li {
+  display: grid;
+  gap: 0.25rem;
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.stock-items span {
+  color: var(--muted);
+}
+.stock-history li {
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.stock-history p {
+  margin: 0.5rem 0;
+}
+.stock-history small {
+  color: var(--muted);
+}
+.stock-pagination {
+  justify-content: space-between;
+  margin-block: 1.5rem;
+}
+.stock-form-grid {
+  display: grid;
+  gap: 1rem;
+}
+@media (min-width: 768px) {
+  .stock-columns {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .stock-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 479px) {
+  .stock-balances {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .stock-balances > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .stock-balances dd {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+  .stock-details {
+    grid-template-columns: 1fr;
+  }
+  .stock-actions > button,
+  .stock-tabs > button {
+    flex: 1 1 100%;
+  }
+  .stock-pagination {
+    justify-content: center;
+  }
+  input[type="datetime-local"] {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+.plain-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.production-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+.production-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.production-card h2,
+.production-card h3,
+.production-card p {
+  margin: 0;
+}
+.production-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.production-ingredient {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1rem;
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+}
+.production-ingredient legend {
+  padding: 0 0.5rem;
+  font-weight: 600;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.production-consumption {
+  display: grid;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.production-lines {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.production-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.production-lines small {
+  display: block;
+  color: var(--muted);
+}
+.production-summary {
+  background: var(--background);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+.production-confirm {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.production-confirm input {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 1.25rem;
+  margin-top: 0.2rem;
+  accent-color: var(--accent-ink);
+}
+@media (min-width: 1100px) {
+  .production-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.form-stack {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  display: grid;
+  gap: 1rem;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+.production-facts {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.production-facts span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.production-facts strong {
+  display: block;
+  margin-top: 0.35rem;
+  overflow-wrap: anywhere;
+}
+.production-grid {
+  margin-top: 1.25rem;
+}
+.production-card,
+.production-summary {
+  overflow-wrap: anywhere;
+}
+
+.catalog-welcome {
+  padding-block: 1.5rem;
+  max-width: 48rem;
+}
+.catalog-toolbar,
+.catalog-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 1.25rem;
+}
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.catalog-card h2,
+.catalog-card p {
+  margin: 0;
+}
+.catalog-card h2 {
+  font-size: 1.5rem;
+}
+.catalog-price {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.catalog-price strong {
+  font-size: 1.6rem;
+}
+.catalog-price span {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+  outline-offset: -2px;
+  border-color: var(--focus);
+}
+
+.cart-line {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
+  overflow-wrap: anywhere;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.order-card h2 {
+  overflow-wrap: anywhere;
+}
+@media (min-width: 768px) {
+  .cart-line {
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.5fr) minmax(
+        8rem,
+        0.7fr
+      );
+    align-items: end;
+  }
+}
+
+.pos-layout {
+  display: grid;
+  gap: 1.5rem;
+  min-width: 0;
+}
+.pos-layout > * {
+  min-width: 0;
+}
+.pos-receipt p {
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1000px) {
+  .pos-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.report-filters,
+.report-summary,
+.report-rows {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+.report-summary dd {
+  margin: 0;
+  font-weight: 600;
+}
+.report-row {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.report-row dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+}
+.report-row dd {
+  margin: 0;
+  text-align: right;
+}

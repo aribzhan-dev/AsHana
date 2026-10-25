@@ -1,30 +1,10 @@
 import re
-import unicodedata
 from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-
-class InventoryError(Exception):
-    def __init__(self, code: str, message: str, field_errors: dict[str, list[str]] | None = None):
-        super().__init__(message)
-        self.code, self.message, self.field_errors = code, message, field_errors or {}
-
-
-def invalid(field: str, message: str) -> InventoryError:
-    return InventoryError("VALIDATION_ERROR", message, {field: [message]})
-
-
-def text_value(value: str, field: str, maximum: int = 200) -> str:
-    value = unicodedata.normalize("NFC", value.strip())
-    if (
-        not value
-        or len(value) > maximum
-        or any(unicodedata.category(c).startswith("C") for c in value)
-    ):
-        raise invalid(field, f"Введите текст от 1 до {maximum} символов без управляющих знаков")
-    return value
+from ashana.shared.domain import BusinessError, invalid, text_value
 
 
 def quantity(value: str, unit: str, base: str, *, allow_zero: bool = False) -> Decimal:
@@ -151,7 +131,7 @@ def batch_state(batch: Batch, now: datetime) -> str:
 def change_quantity(batch: Batch, delta: Decimal) -> Batch:
     after = batch.on_hand + delta
     if after < batch.reserved:
-        raise InventoryError(
+        raise BusinessError(
             "INSUFFICIENT_STOCK", "Недостаточно свободного остатка: резерв нельзя списать"
         )
     if after > Decimal("999999999"):
@@ -174,12 +154,6 @@ class Movement:
     status_before: str
     status_after: str
     actor_name: str = ""
-
-
-@dataclass(frozen=True)
-class Result:
-    subject_id: UUID
-    version: int
 
 
 @dataclass(frozen=True)

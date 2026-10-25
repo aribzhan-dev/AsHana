@@ -97,6 +97,18 @@ ruff, mypy `src`, ESLint, Prettier, TypeScript чисто. Стенд 8080 пе�
 `0020_staff_profile`. Проверки: **163 backend**, **74 Vitest**, **Google Chrome E2E 34/34**
 (сценарий сотрудника: поиск → карточка → Telegram → роли → блокировка). Стенд 8080 обновлён.
 
+## Дополнение 24.10.2026 — качество кода
+
+- `ashana/shared/domain.py`: `BusinessError` вместо `InventoryError` во всех 10 модулях (40 файлов),
+  общие `invalid`, `text_value`, `Result`; `bootstrap/http.py` для общих HTTP-помощников.
+- Финансы: порт `FinanceRepository`; application не импортирует infrastructure ни в одном модуле.
+- Склад: сервис 711 строк → `service.py` 400 + `base.py`, `directories.py`, `receiving.py`.
+- mypy тестов: 57 ошибок → 0; добавлен `py.typed`.
+- Frontend: `StaffManagement.tsx` 879 → 172 строки (+4 файла), `PayrollView.tsx` 689 → 159
+  (+5 файлов), `styles.css` 3473 строки → 9 частей; повтор `.row-actions` объединён.
+  Разделение проверено: код совпадает с прежним посимвольно, CSS — построчно.
+- Контракт OpenAPI не изменился. Проверки: 163 backend, 74 Vitest, Chrome E2E 34/34.
+
 ## Не сделано
 
 - Замечаний по дизайну (пункт 5) владелец не дал — отдельной работы не было.

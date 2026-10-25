@@ -18,7 +18,7 @@ import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Alert } from "../../shared/ui/Feedback";
 import { Input, Select } from "../../shared/ui/Input";
-import { MoneyList } from "./PayrollView";
+import { MoneyList } from "./MoneyList";
 
 type Done = () => void;
 
