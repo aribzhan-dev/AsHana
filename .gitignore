@@ -57,3 +57,9 @@ Thumbs.db
 .claude/launch.json
 .claude/settings.local.json
 # Documentation, tasks and agent instructions may be published (owner, 23.10.2026).
+
+.agents/
+.claude/
+AGENTS.md
+task/
+CLAUDE.md
