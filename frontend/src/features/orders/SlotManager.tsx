@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { catalogApi, type Period } from "../../shared/api/catalog";
@@ -100,20 +101,20 @@ function SlotForm({
           error={op.fields.starts_at}
           required
         />
-        <Input
+        <NumericInput
           label="Длительность, минут"
           inputMode="numeric"
           value={minutes}
-          onChange={(e) => setMinutes(e.target.value)}
+          onValueChange={setMinutes}
           disabled={!!previous?.occupied}
           error={op.fields.ends_at}
           required
         />
-        <Input
+        <NumericInput
           label="Максимум заказов в слоте"
           inputMode="numeric"
           value={capacity}
-          onChange={(e) => setCapacity(e.target.value)}
+          onValueChange={setCapacity}
           error={op.fields.capacity}
           required
         />

@@ -142,7 +142,9 @@ it("приход собственной продукции недоступен,
       onSaved={vi.fn()}
     />,
   );
-  await userEvent.type(screen.getByLabelText("Количество"), "1e3");
+  await userEvent.click(screen.getByLabelText("Количество"));
+  await userEvent.paste("1e3");
+  expect(screen.getByLabelText("Количество")).toHaveValue("");
   await userEvent.click(
     screen.getByRole("button", { name: "Оформить приход" }),
   );

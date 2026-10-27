@@ -94,7 +94,7 @@ it("количество сохраняет редактирование и вс
   fireEvent.change(screen.getByLabelText("Порции"), {
     target: { value: "1e3" },
   });
-  expect(screen.getByLabelText("Порции")).toHaveValue("1e3");
+  expect(screen.getByLabelText("Порции")).toHaveValue("2");
   expect(quantityError("1e3")).toBeTruthy();
   for (const value of [
     "",

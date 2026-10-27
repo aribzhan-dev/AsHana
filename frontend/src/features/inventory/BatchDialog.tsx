@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { displayText } from "../../shared/lib/display-text";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -106,11 +107,13 @@ export function BatchDialog({
       >
         <fieldset className="form-fields" disabled={mutation.busy}>
           {numeric && (
-            <Input
+            <NumericInput
               label={operation === "count" ? t.actual : t.quantity}
-              inputMode="decimal"
+              inputMode={
+                unit === "pcs" || unit === "portion" ? "numeric" : "decimal"
+              }
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onValueChange={setAmount}
               error={mutation.fields.quantity}
               maxLength={24}
               hint={t.quantityHint}

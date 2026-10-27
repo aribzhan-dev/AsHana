@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { CategorySelect } from "./CategorySelect";
 import { PhotoField } from "./PhotoField";
 import { useEffect, useState } from "react";
@@ -161,31 +162,29 @@ export function ItemForm({
             error={mutation.fields.category}
           />
           <div className="stock-form-grid">
-            <Input
+            <NumericInput
               label="Закупочная цена, ₸"
               inputMode="decimal"
               value={purchase}
-              onChange={(e) => setPurchase(e.target.value)}
+              onValueChange={setPurchase}
               error={mutation.fields.purchase_price_minor}
             />
-            <Input
+            <NumericInput
               label="Цена продажи, ₸"
               inputMode="decimal"
               value={sale}
-              onChange={(e) => setSale(e.target.value)}
+              onValueChange={setSale}
               error={mutation.fields.sale_price_minor}
             />
           </div>
           {kind === "purchased" && (
-            <Input
+            <NumericInput
               label="Штрихкод"
               placeholder="8–14 цифр, необязательно"
               inputMode="numeric"
               maxLength={14}
               value={barcode}
-              onChange={(e) =>
-                setBarcode(e.target.value.replace(/[^0-9]/g, ""))
-              }
+              onValueChange={setBarcode}
               error={mutation.fields.barcode}
             />
           )}
@@ -351,12 +350,14 @@ export function ReceiptForm({
             maxLength={100}
             required
           />
-          <Input
+          <NumericInput
             label={t.quantity}
             value={values.quantity}
-            onChange={(e) => set("quantity", e.target.value)}
+            onValueChange={(value) => set("quantity", value)}
             error={mutation.fields.quantity}
-            inputMode="decimal"
+            inputMode={
+              unit === "pcs" || unit === "portion" ? "numeric" : "decimal"
+            }
             placeholder="0"
             hint={t.quantityHint}
             maxLength={24}
@@ -374,10 +375,10 @@ export function ReceiptForm({
               </option>
             ))}
           </Select>
-          <Input
+          <NumericInput
             label={t.cost}
             value={values.cost}
-            onChange={(e) => set("cost", e.target.value)}
+            onValueChange={(value) => set("cost", value)}
             error={mutation.fields.total_cost_minor}
             hint={t.costHint}
             inputMode="decimal"

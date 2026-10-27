@@ -1,9 +1,3 @@
-"""Set up the staff Telegram chat without printing the bot token.
-
-python -m ashana.bootstrap.telegram check   # bot name, chat access, test message
-python -m ashana.bootstrap.telegram chats   # chats that recently wrote to the bot
-"""
-
 import sys
 
 from ashana.bootstrap.settings import Settings
@@ -12,7 +6,7 @@ from ashana.modules.notifications.infrastructure.delivery import DeliveryFailed,
 
 def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else "check"
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()  
     if not settings.telegram_bot_token:
         raise SystemExit("Токен бота не задан: добавьте ASHANA_TELEGRAM_BOT_TOKEN в .env.")
     bot = TelegramSender(settings.telegram_bot_token.get_secret_value(), settings.telegram_chat_id)
@@ -38,7 +32,7 @@ def main() -> None:
             raise SystemExit(
                 "Чат не задан: выполните команду chats и укажите ASHANA_TELEGRAM_CHAT_ID."
             )
-        bot("✅ AsHana подключена: сюда будут приходить новые заказы и их статусы.")
+        bot("AsHana подключена: сюда будут приходить новые заказы и их статусы.")
         print("Тестовое сообщение отправлено.")
     except DeliveryFailed:
         raise SystemExit(

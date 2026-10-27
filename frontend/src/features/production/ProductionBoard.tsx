@@ -1,3 +1,4 @@
+import { Pagination } from "../../shared/ui/Pagination";
 import { DetailsButton } from "../../shared/ui/DetailsButton";
 import { displayText } from "../../shared/lib/display-text";
 import { useCallback, useEffect, useState } from "react";
@@ -12,7 +13,7 @@ import { errorMessage } from "../../shared/lib/forms";
 import { stockDate, stockNumber } from "../../shared/lib/inventory-validation";
 import { inventoryRu as s } from "../../shared/locales/inventory";
 import { productionRu as t } from "../../shared/locales/production";
-import { Button } from "../../shared/ui/Button";
+import { Button, IconButton } from "../../shared/ui/Button";
 import {
   Badge,
   Card,
@@ -187,34 +188,36 @@ export function ProductionBoard({ onExpired }: { onExpired: () => void }) {
             {tab === "recipes"
               ? recipes.map((recipe) => (
                   <Card key={recipe.id} className="production-card">
-                    <div className="production-card-heading">
-                      <h2>{recipe.output_name}</h2>
-                      <Badge>
-                        {s.version} {recipe.version}
-                      </Badge>
+                    <div className="recipe-heading">
+                      <div className="production-card-heading">
+                        <h2>{recipe.output_name}</h2>
+                        <Badge>
+                          {s.version} {recipe.version}
+                        </Badge>
+                      </div>
+                      <DetailsButton title={recipe.output_name}>
+                        <RecipeDetails recipe={recipe} />
+                      </DetailsButton>
                     </div>
                     <p className="muted">
                       Выход:{" "}
                       {yieldLabel(recipe.expected_yield, recipe.output_unit)} ·
                       Ингредиентов: {recipe.lines.length}
                     </p>
-                    <DetailsButton title={recipe.output_name}>
-                      <RecipeDetails recipe={recipe} />
-                    </DetailsButton>
-                    <div className="button-row">
+                    <div className="recipe-actions">
                       <Button
                         onClick={() => setEditor({ kind: "produce", recipe })}
                       >
                         {t.produce}
                       </Button>
-                      <Button
+                      <IconButton
                         variant="secondary"
+                        icon="edit"
+                        label="Редактировать рецепт"
                         onClick={() =>
                           setEditor({ kind: "recipe", previous: recipe })
                         }
-                      >
-                        Редактировать рецепт
-                      </Button>
+                      />
                     </div>
                   </Card>
                 ))
@@ -277,31 +280,18 @@ export function ProductionBoard({ onExpired }: { onExpired: () => void }) {
                   </Card>
                 ))}
           </div>
-          <div className="stock-pagination">
-            <Button
-              variant="secondary"
-              disabled={offset === 0}
-              onClick={() => {
-                setOffset((n) => Math.max(0, n - 20));
-                refresh();
-              }}
-            >
-              {s.previous}
-            </Button>
-            <span>
-              {s.page} {offset / 20 + 1}
-            </span>
-            <Button
-              variant="secondary"
-              disabled={count < 20}
-              onClick={() => {
-                setOffset((n) => n + 20);
-                refresh();
-              }}
-            >
-              {s.next}
-            </Button>
-          </div>
+          <Pagination
+            page={offset / 20 + 1}
+            hasNext={count >= 20}
+            onPrevious={() => {
+              setOffset((n) => Math.max(0, n - 20));
+              refresh();
+            }}
+            onNext={() => {
+              setOffset((n) => n + 20);
+              refresh();
+            }}
+          />
         </>
       )}
       {editor && (

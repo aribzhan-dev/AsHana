@@ -1,4 +1,5 @@
-import { Input, type InputProps } from "./Input";
+import { NumericInput } from "./NumericInput";
+import type { InputProps } from "./Input";
 import { IconButton } from "./Button";
 import { uiRu as t } from "../locales/ui";
 
@@ -22,11 +23,11 @@ export function QuantityInput({
   }
   return (
     <div className="quantity-control">
-      <Input
+      <NumericInput
         {...props}
         value={value}
         inputMode="numeric"
-        onChange={(event) => onValueChange(event.target.value)}
+        onValueChange={onValueChange}
       />
       <div className="quantity-actions">
         <IconButton

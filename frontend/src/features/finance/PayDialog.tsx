@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { useState } from "react";
 import { financeApi, type Accrual } from "../../shared/api/finance";
 import type { Directory } from "../../shared/api/receiving";
@@ -95,11 +96,11 @@ export function PayDialog({
             </option>
           ))}
         </Select>
-        <Input
+        <NumericInput
           label="Сумма, ₸"
           inputMode="decimal"
           value={sum}
-          onChange={(e) => setSum(e.target.value)}
+          onValueChange={setSum}
           error={op.fields.amount_minor}
         />
         <Select

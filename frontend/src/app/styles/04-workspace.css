@@ -351,6 +351,9 @@ a.button-primary {
   .workspace-shell .staff-main {
     padding-top: 0;
   }
+  .workspace-shell .staff-main > .field {
+    max-width: none;
+  }
   .metrics-grid {
     gap: 8px;
   }

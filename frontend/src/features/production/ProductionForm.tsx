@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { displayText } from "../../shared/lib/display-text";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -225,13 +226,13 @@ export function ProductionForm({
                     </p>
                   )}
                   <div className="stock-form-grid">
-                    <Input
+                    <NumericInput
                       label={t.consumption}
                       inputMode="decimal"
                       maxLength={24}
                       value={row.quantity}
-                      onChange={(e) =>
-                        patch(row.key, { quantity: e.target.value })
+                      onValueChange={(value) =>
+                        patch(row.key, { quantity: value })
                       }
                       error={op.fields[`${row.key}-quantity`]}
                       required
@@ -308,13 +309,13 @@ export function ProductionForm({
           maxLength={100}
           required
         />
-        <Input
+        <NumericInput
           label={t.actual}
           hint={s.units[recipe.output_unit as "pcs" | "portion"]}
           inputMode="numeric"
           maxLength={9}
           value={actual}
-          onChange={(e) => setActual(e.target.value)}
+          onValueChange={setActual}
           error={op.fields.actual_yield}
           required
         />

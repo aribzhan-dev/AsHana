@@ -70,6 +70,29 @@ a {
   flex-shrink: 0;
   border-radius: 13px;
 }
+.pagination {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-block: 12px;
+}
+.pagination-page {
+  text-align: center;
+  font-size: 14px;
+}
+.pagination-next-icon {
+  transform: rotate(180deg);
+}
+@media (max-width: 1099px) {
+  .pagination-label {
+    display: none;
+  }
+  .pagination > .button {
+    width: 46px;
+    padding: 0;
+  }
+}
 .full-width {
   width: 100%;
 }

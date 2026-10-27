@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { invoiceLineCost } from "../../shared/lib/invoice-money";
 import { useEffect, useState } from "react";
 import {
@@ -288,21 +289,25 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
                         </option>
                       ))}
                   </Select>
-                  <Input
+                  <NumericInput
                     label={`Количество, ${t.units[row.unit as keyof typeof t.units]}`}
                     required
-                    inputMode="decimal"
+                    inputMode={
+                      row.unit === "pcs" || row.unit === "portion"
+                        ? "numeric"
+                        : "decimal"
+                    }
                     value={row.quantity}
-                    onChange={(e) =>
-                      patch(row.id, { quantity: e.target.value })
+                    onValueChange={(value) =>
+                      patch(row.id, { quantity: value })
                     }
                   />
-                  <Input
+                  <NumericInput
                     label="Цена за единицу, ₸"
                     required
                     inputMode="decimal"
                     value={row.price}
-                    onChange={(e) => patch(row.id, { price: e.target.value })}
+                    onValueChange={(value) => patch(row.id, { price: value })}
                   />
                   <Input
                     label="Годен до (Астана)"
@@ -333,11 +338,11 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
                 Добавить строку
               </Button>
               <div className="report-filters">
-                <Input
+                <NumericInput
                   label="Дополнительные расходы, ₸"
                   inputMode="decimal"
                   value={expenses}
-                  onChange={(e) => setExpenses(e.target.value)}
+                  onValueChange={setExpenses}
                 />
                 <Input
                   label="Комментарий к расходам и накладной"
@@ -346,12 +351,12 @@ export function ReceivingBoard({ onExpired }: { onExpired: () => void }) {
                   onChange={(e) => setNote(e.target.value)}
                 />
               </div>
-              <Input
+              <NumericInput
                 label="Оплачено сейчас, ₸"
                 inputMode="decimal"
                 placeholder={`Полностью — ${stockMoney(goods + (extra || 0))}`}
                 value={paidNow}
-                onChange={(e) => setPaidNow(e.target.value)}
+                onValueChange={setPaidNow}
                 hint="Оставьте пустым, если оплачено полностью. Остаток станет долгом поставщику."
               />
               <div className="invoice-totals">
@@ -587,11 +592,11 @@ function PayDebtDialog({
           {invoice.supplier_name}: долг{" "}
           <strong>{stockMoney(invoice.debt_minor)}</strong>
         </p>
-        <Input
+        <NumericInput
           label="Сумма, ₸"
           inputMode="decimal"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onValueChange={setAmount}
           error={op.fields.amount_minor}
           required
         />

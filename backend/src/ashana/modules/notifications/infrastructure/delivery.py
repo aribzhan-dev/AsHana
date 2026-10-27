@@ -92,8 +92,7 @@ def deliver_one(
     now: datetime | None = None,
     max_age: timedelta | None = None,
 ) -> bool:
-    """Send one due message. With max_age, older backlog (e.g. before the bot was set up)
-    is left unsent so a newly connected chat is not flooded with stale orders."""
+
     now = now or datetime.now(UTC)
     lease = uuid4()
     fresh = outbox.c.created_at > now - max_age if max_age else true()

@@ -122,6 +122,42 @@
 .production-card p {
   margin: 0;
 }
+.production-card > .muted {
+  margin: 0;
+}
+.recipe-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.recipe-heading > .production-card-heading {
+  min-width: 0;
+}
+.recipe-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+}
+.recipe-actions > .button-primary {
+  flex: 1;
+  min-width: 0;
+}
+.period-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+.period-range time {
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .catalog-actions > .button {
+    flex: 1 1 100%;
+  }
+}
 .production-card-heading {
   display: flex;
   flex-wrap: wrap;

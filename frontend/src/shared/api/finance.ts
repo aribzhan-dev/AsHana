@@ -151,9 +151,11 @@ export function percent(bp: number) {
 }
 
 export function basisPoints(text: string): number | undefined {
-  const value = Number(text.replace(",", ".").trim() || "0");
-  if (!Number.isFinite(value) || value < 0 || value > 100) return undefined;
-  return Math.round(value * 100);
+  const raw = text.trim().replace(",", ".") || "0";
+  if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(raw)) return undefined;
+  const [whole = "0", fraction = ""] = raw.split(".");
+  const value = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  return value <= 10000 ? value : undefined;
 }
 
 export function currentMonth() {

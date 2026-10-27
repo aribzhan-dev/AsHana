@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { useState } from "react";
 import {
   basisPoints,
@@ -56,7 +57,7 @@ function MoneyDialog({
   const op = useOperation(() => window.location.reload());
   async function save() {
     const negative = allowNegative && sum.trim().startsWith("-");
-    const minor = costMinor(sum.replace(/^-/, ""));
+    const minor = costMinor(negative ? sum.trim().slice(1) : sum);
     const time = almatyInstant(at);
     if (!minor) {
       op.setFields({ amount_minor: "Введите сумму" });
@@ -95,11 +96,12 @@ function MoneyDialog({
             </option>
           ))}
         </Select>
-        <Input
+        <NumericInput
           label="Сумма, ₸"
+          allowNegative={allowNegative}
           inputMode="decimal"
           value={sum}
-          onChange={(e) => setSum(e.target.value)}
+          onValueChange={setSum}
           error={op.fields.amount_minor}
           hint={
             allowNegative ? "Исправление ошибки — со знаком минус." : undefined
@@ -373,11 +375,11 @@ function OwnerDialog({
           onChange={(e) => setName(e.target.value)}
           required
         />
-        <Input
+        <NumericInput
           label="Доля, %"
           inputMode="decimal"
           value={share}
-          onChange={(e) => setShare(e.target.value)}
+          onValueChange={setShare}
           error={op.fields.share_bp}
         />
         <label className="check-label">
@@ -450,11 +452,11 @@ export function PlanEditor({
           </option>
         ))}
       </Select>
-      <Input
+      <NumericInput
         label="Цель на месяц, ₸"
         inputMode="decimal"
         value={target}
-        onChange={(e) => setTarget(e.target.value)}
+        onValueChange={setTarget}
         error={op.fields.target_minor}
       />
       <Button type="submit" loading={op.busy}>
@@ -499,11 +501,11 @@ export function CommissionEditor({
             void save(m.id);
           }}
         >
-          <Input
+          <NumericInput
             label={`${m.name}, комиссия %`}
             inputMode="decimal"
             value={values[m.id] ?? ""}
-            onChange={(e) => setValues({ ...values, [m.id]: e.target.value })}
+            onValueChange={(value) => setValues({ ...values, [m.id]: value })}
           />
           <Button type="submit" variant="secondary" loading={op.busy}>
             Сохранить

@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { CategorySelect } from "../inventory/CategorySelect";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -316,12 +317,12 @@ export function EntryForm({
           maxLength={1000}
           error={op.fields.description}
         />
-        <Input
+        <NumericInput
           label={t.price}
           hint={t.priceHint}
           inputMode="decimal"
           value={price}
-          onChange={(e) => setPrice(e.target.value)}
+          onValueChange={setPrice}
           maxLength={24}
           error={op.fields.price_minor}
           required

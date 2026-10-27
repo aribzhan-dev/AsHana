@@ -1,9 +1,9 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { useState } from "react";
 import { request } from "../../shared/api/http";
 import type { StockItem } from "../../shared/api/inventory";
 import { useOperation } from "../../shared/lib/useOperation";
 import { Dialog } from "../../shared/ui/Dialog";
-import { Input } from "../../shared/ui/Input";
 import { Button } from "../../shared/ui/Button";
 import { Alert } from "../../shared/ui/Feedback";
 export function BarcodeEditor({
@@ -45,13 +45,13 @@ export function BarcodeEditor({
             });
         }}
       >
-        <Input
+        <NumericInput
           label="Штрихкод"
           hint="8–14 цифр. Пустое поле убирает штрихкод."
           inputMode="numeric"
           maxLength={14}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onValueChange={setValue}
           error={op.fields.barcode}
         />
         {op.error && <Alert>{op.error}</Alert>}

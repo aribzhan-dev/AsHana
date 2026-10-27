@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { displayText } from "../../shared/lib/display-text";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -248,7 +249,7 @@ export function RecipeForm({
         {!outputs.length && !previous && (
           <p className="field-hint">{t.setup}</p>
         )}
-        <Input
+        <NumericInput
           label={t.expected}
           hint={
             outputs.find((i) => i.id === output)?.unit === "pcs"
@@ -260,18 +261,18 @@ export function RecipeForm({
           inputMode="numeric"
           maxLength={9}
           value={expected}
-          onChange={(e) => setExpected(e.target.value)}
+          onValueChange={setExpected}
           error={op.fields.expected_yield}
           required
         />
         <div className="stock-form-grid">
-          <Input
+          <NumericInput
             label={t.portion}
             hint={t.portionHint}
             inputMode="decimal"
             maxLength={24}
             value={portion}
-            onChange={(e) => setPortion(e.target.value)}
+            onValueChange={setPortion}
             error={op.fields.portion_quantity}
             required
           />
@@ -321,12 +322,12 @@ export function RecipeForm({
               ))}
             </Select>
             <div className="stock-form-grid">
-              <Input
+              <NumericInput
                 label={t.norm}
                 inputMode="decimal"
                 maxLength={24}
                 value={line.quantity}
-                onChange={(e) => patch(line.key, { quantity: e.target.value })}
+                onValueChange={(value) => patch(line.key, { quantity: value })}
                 error={op.fields[`${line.key}-quantity`]}
                 required
               />

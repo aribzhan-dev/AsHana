@@ -1,3 +1,4 @@
+import { NumericInput } from "../../shared/ui/NumericInput";
 import { useState } from "react";
 import { basisPoints, financeApi, type Worker } from "../../shared/api/finance";
 import { costMinor } from "../../shared/lib/inventory-validation";
@@ -115,34 +116,34 @@ export function WorkerDialog({
           ))}
         </Select>
         <div className="stock-form-grid">
-          <Input
+          <NumericInput
             label="Оклад в месяц, ₸"
             inputMode="decimal"
             value={form.monthly}
-            onChange={(e) => set({ monthly: e.target.value })}
+            onValueChange={(value) => set({ monthly: value })}
             error={op.fields.monthly_minor}
           />
-          <Input
+          <NumericInput
             label="За рабочий день, ₸"
             inputMode="decimal"
             value={form.daily}
-            onChange={(e) => set({ daily: e.target.value })}
+            onValueChange={(value) => set({ daily: value })}
             error={op.fields.daily_minor}
           />
-          <Input
+          <NumericInput
             label="За час, ₸"
             inputMode="decimal"
             value={form.hourly}
-            onChange={(e) => set({ hourly: e.target.value })}
+            onValueChange={(value) => set({ hourly: value })}
             error={op.fields.hourly_minor}
           />
         </div>
         <div className="stock-form-grid">
-          <Input
+          <NumericInput
             label="% от продаж"
             inputMode="decimal"
             value={form.sales}
-            onChange={(e) => set({ sales: e.target.value })}
+            onValueChange={(value) => set({ sales: value })}
             error={op.fields.sales_bp}
           />
           <Select
@@ -157,11 +158,11 @@ export function WorkerDialog({
           </Select>
         </div>
         <div className="stock-form-grid">
-          <Input
+          <NumericInput
             label="% от прибыли"
             inputMode="decimal"
             value={form.profit}
-            onChange={(e) => set({ profit: e.target.value })}
+            onValueChange={(value) => set({ profit: value })}
             error={op.fields.profit_bp}
           />
           <Select

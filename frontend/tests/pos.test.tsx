@@ -109,7 +109,8 @@ it("отказ оставляет корзину, новая попытка им
   await screen.findByText(/Оплата отклонена ·/);
   const count = screen.getByLabelText("Плов");
   await userEvent.clear(count);
-  await userEvent.type(count, "1e2");
+  await userEvent.paste("1e2");
+  expect(count).toHaveValue("");
   expect(
     screen.getByRole("button", { name: "Перейти к оплате" }),
   ).toBeDisabled();

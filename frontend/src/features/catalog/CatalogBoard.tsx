@@ -1,3 +1,4 @@
+import { Pagination } from "../../shared/ui/Pagination";
 import { useEffect, useState } from "react";
 import { ApiError } from "../../shared/api/http";
 import {
@@ -13,7 +14,6 @@ import {
   stockMoney,
 } from "../../shared/lib/inventory-validation";
 import { catalogRu as t } from "../../shared/locales/catalog";
-import { inventoryRu as s } from "../../shared/locales/inventory";
 import { Button } from "../../shared/ui/Button";
 import { Input } from "../../shared/ui/Input";
 import {
@@ -119,7 +119,7 @@ export function CatalogBoard({ onExpired }: { onExpired: () => void }) {
           }}
         />
       )}
-      <div className="button-row">
+      <div className="button-row catalog-actions">
         <Button
           icon="plus"
           onClick={() => setEditor({ kind: selected ? "entry" : "period" })}
@@ -227,11 +227,16 @@ export function CatalogBoard({ onExpired }: { onExpired: () => void }) {
                       <h2>{period.name}</h2>
                       <Badge>{period.published ? t.published : t.draft}</Badge>
                     </div>
-                    <p>
-                      {stockDate(period.starts_at)} —{" "}
-                      {stockDate(period.ends_at)}
+                    <p className="period-range">
+                      <time dateTime={period.starts_at}>
+                        {stockDate(period.starts_at)}
+                      </time>
+                      <span aria-hidden="true">—</span>
+                      <time dateTime={period.ends_at}>
+                        {stockDate(period.ends_at)}
+                      </time>
                     </p>
-                    <div className="button-row">
+                    <div className="button-row catalog-actions">
                       <Button
                         onClick={() => {
                           setSelected(period);
@@ -253,31 +258,18 @@ export function CatalogBoard({ onExpired }: { onExpired: () => void }) {
                   </Card>
                 ))}
           </div>
-          <div className="stock-pagination">
-            <Button
-              variant="secondary"
-              disabled={offset === 0}
-              onClick={() => {
-                setOffset((n) => Math.max(0, n - 20));
-                refresh();
-              }}
-            >
-              {s.previous}
-            </Button>
-            <span>
-              {s.page} {offset / 20 + 1}
-            </span>
-            <Button
-              variant="secondary"
-              disabled={count < 20}
-              onClick={() => {
-                setOffset((n) => n + 20);
-                refresh();
-              }}
-            >
-              {s.next}
-            </Button>
-          </div>
+          <Pagination
+            page={offset / 20 + 1}
+            hasNext={count >= 20}
+            onPrevious={() => {
+              setOffset((n) => Math.max(0, n - 20));
+              refresh();
+            }}
+            onNext={() => {
+              setOffset((n) => n + 20);
+              refresh();
+            }}
+          />
         </>
       )}
       {editor && (
